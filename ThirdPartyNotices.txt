@@ -1,0 +1,62 @@
+THIRD-PARTY SOFTWARE NOTICES AND INFORMATION
+
+This project incorporates components from the projects listed below.
+
+
+================================================================================
+1. Positron
+================================================================================
+
+Positron - A next-generation data science IDE
+https://github.com/posit-dev/positron
+
+Copyright (C) 2022-2025 Posit Software, PBC. All rights reserved.
+
+Licensed under the Elastic License 2.0.
+
+Portions of this software are based on code from Positron, including but not
+limited to:
+- Kernel supervisor client and Jupyter protocol implementation
+  (src/supervisor/)
+- Runtime message types and interfaces
+- Language runtime lifecycle management patterns
+
+The Elastic License 2.0 full text is included in LICENSE.txt.
+
+
+================================================================================
+2. ARK (A R Kernel)
+================================================================================
+
+ARK - An R kernel for Jupyter-compatible environments
+https://github.com/posit-dev/ark
+
+Copyright (C) Posit Software, PBC. All rights reserved.
+
+ARK is bundled as a binary dependency and is licensed under the
+Elastic License 2.0 by Posit Software, PBC.
+
+
+================================================================================
+3. Kallichore
+================================================================================
+
+Kallichore - A kernel supervisor for managing session lifecycle
+https://github.com/posit-dev/kallichore
+
+Copyright (C) Posit Software, PBC. All rights reserved.
+
+Kallichore is bundled as a binary dependency and is licensed under the
+Elastic License 2.0 by Posit Software, PBC.
+
+
+================================================================================
+4. Visual Studio Code (Code - OSS)
+================================================================================
+
+Visual Studio Code - Open Source (Code - OSS)
+https://github.com/microsoft/vscode
+
+Copyright (c) Microsoft Corporation. All rights reserved.
+
+Licensed under the MIT License.

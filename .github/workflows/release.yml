@@ -1,0 +1,206 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      SUPERVISOR_CHECKOUT_PATH: .deps/vscode-supervisor
+      SUPERVISOR_REPOSITORY: Blakfs24/vscode-supervisor
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Checkout supervisor API source
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.SUPERVISOR_REPOSITORY }}
+          path: ${{ env.SUPERVISOR_CHECKOUT_PATH }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            .deps/vscode-supervisor/package-lock.json
+
+      - name: Install ark dependencies
+        run: npm ci
+
+      - name: Install supervisor dependencies
+        run: npm ci
+        working-directory: ${{ env.SUPERVISOR_CHECKOUT_PATH }}
+
+      - name: Build supervisor development dependency
+        run: npm run build
+        working-directory: ${{ env.SUPERVISOR_CHECKOUT_PATH }}
+
+      - name: Verify public API sync
+        run: npm run verify:supervisor-api -- $SUPERVISOR_CHECKOUT_PATH
+
+      - name: Run tests
+        env:
+          SUPERVISOR_DEV_EXTENSION_PATH: ${{ env.SUPERVISOR_CHECKOUT_PATH }}
+        run: npm run test:unit:ext
+
+  package:
+    needs: verify
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-latest
+            target: linux-x64
+            target_os: linux
+            target_arch: x64
+          - runner: ubuntu-latest
+            target: linux-arm64
+            target_os: linux
+            target_arch: arm64
+          - runner: macos-13
+            target: darwin-x64
+            target_os: darwin
+            target_arch: x64
+          - runner: macos-latest
+            target: darwin-arm64
+            target_os: darwin
+            target_arch: arm64
+          - runner: windows-latest
+            target: win32-x64
+            target_os: windows
+            target_arch: x64
+
+    runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install target binaries
+        env:
+          TARGET_OS: ${{ matrix.target_os }}
+          TARGET_ARCH: ${{ matrix.target_arch }}
+        run: npm run install:binaries -- --retry 3
+
+      - name: Package target VSIX
+        shell: bash
+        run: |
+          mkdir -p release-artifacts
+          npx vsce package --no-dependencies --target "${{ matrix.target }}" --out "release-artifacts/vscode-ark-${{ matrix.target }}.vsix"
+
+      - name: Upload VSIX artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: vscode-ark-${{ matrix.target }}
+          path: release-artifacts/*.vsix
+          retention-days: 30
+
+  release:
+    needs: package
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download packaged artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/**/*.vsix
+          generate_release_notes: true
+
+  publish-marketplace:
+    needs:
+      - package
+      - release
+    if: ${{ secrets.VSCE_PAT != '' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Download packaged artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Publish to Visual Studio Marketplace
+        shell: bash
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+        run: |
+          shopt -s globstar nullglob
+          files=(artifacts/**/*.vsix)
+          if [ "${#files[@]}" -eq 0 ]; then
+            echo "No VSIX artifacts found"
+            exit 1
+          fi
+          npx vsce publish --skip-duplicate --packagePath "${files[@]}" --pat "${VSCE_PAT}"
+
+  publish-openvsx:
+    needs:
+      - package
+      - release
+    if: ${{ secrets.OVSX_PAT != '' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Download packaged artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Publish to Open VSX
+        shell: bash
+        env:
+          OVSX_PAT: ${{ secrets.OVSX_PAT }}
+        run: |
+          shopt -s globstar nullglob
+          files=(artifacts/**/*.vsix)
+          if [ "${#files[@]}" -eq 0 ]; then
+            echo "No VSIX artifacts found"
+            exit 1
+          fi
+          npx ovsx -p "${OVSX_PAT}" publish --skip-duplicate --packagePath "${files[@]}"

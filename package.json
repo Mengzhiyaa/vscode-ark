@@ -1,0 +1,318 @@
+{
+  "publisher": "ark",
+  "version": "0.0.14",
+  "license": "SEE LICENSE IN LICENSE.txt",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Blakfs24/vscode-ark"
+  },
+  "homepage": "https://github.com/Blakfs24/vscode-ark#readme",
+  "bugs": {
+    "url": "https://github.com/Blakfs24/vscode-ark/issues"
+  },
+  "workspaces": [
+    "webview"
+  ],
+  "engines": {
+    "vscode": "^1.105.0"
+  },
+  "categories": [
+    "Programming Languages",
+    "Data Science"
+  ],
+  "icon": "images/logo.png",
+  "name": "vscode-ark",
+  "displayName": "R Language Support",
+  "description": "R Language runtime for VS Code using ark kernel",
+  "extensionDependencies": [
+    "ark.vscode-supervisor"
+  ],
+  "activationEvents": [
+    "onStartupFinished",
+    "onDebugResolve:ark",
+    "onLanguage:r",
+    "onCommand:supervisor.startConsole",
+    "onCommand:supervisor.restartKernel",
+    "onCommand:supervisor.selectRPath",
+    "onCommand:supervisor.runCurrentStatement",
+    "onCommand:supervisor.insertAssignmentOperator",
+    "onCommand:supervisor.insertPipeOperator",
+    "onCommand:supervisor.help.showHelpAtCursor",
+    "onCommand:supervisor.help.lookupHelpTopic",
+    "onCommand:supervisor.help.showWelcome",
+    "onCommand:supervisor.help.find"
+  ],
+  "main": "./dist/extension.js",
+  "scripts": {
+    "vscode:prepublish": "npm run build",
+    "compile": "webpack",
+    "watch": "webpack --watch",
+    "compile-tests": "node -e \"require('fs').rmSync('out', { recursive: true, force: true })\" && tsc -p . --outDir out",
+    "install:binaries": "node scripts/install-binaries.mjs",
+    "build:webview": "npm --prefix webview run build",
+    "watch:webview": "npm --prefix webview run dev",
+    "check:webview": "npm --prefix webview run check",
+    "sync:supervisor-api": "node scripts/sync-supervisor-api.mjs",
+    "verify:supervisor-api": "node scripts/sync-supervisor-api.mjs --check",
+    "build": "npm run build:webview && npm run compile",
+    "test:prepare": "npm run compile-tests && npm run build",
+    "test": "npm run test:prepare && node scripts/run-vscode-tests.mjs --label all",
+    "test:unit:ext": "npm run test:prepare && node scripts/run-vscode-tests.mjs --label unit",
+    "lint": "eslint src",
+    "vsce:package": "vsce package"
+  },
+  "positron": {
+    "binaryDependencies": {
+      "ark": "0.1.242"
+    }
+  },
+  "contributes": {
+    "languages": [
+      {
+        "id": "r",
+        "extensions": [
+          ".R",
+          ".r",
+          ".rhistory",
+          ".rprofile",
+          ".rt"
+        ],
+        "aliases": [
+          "R",
+          "r"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "r",
+        "scopeName": "source.r",
+        "path": "./syntaxes/r.tmGrammar.gen.json"
+      }
+    ],
+    "commands": [
+      {
+        "command": "supervisor.startConsole",
+        "title": "Start R Console",
+        "category": "Ark"
+      },
+      {
+        "command": "supervisor.restartKernel",
+        "title": "Restart R Kernel",
+        "category": "Ark",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "supervisor.selectRPath",
+        "title": "Select R Installation",
+        "category": "Ark"
+      },
+      {
+        "command": "supervisor.runCurrentStatement",
+        "title": "Run Current Statement",
+        "category": "R"
+      },
+      {
+        "command": "supervisor.insertAssignmentOperator",
+        "title": "Insert Assignment Operator (<-)",
+        "category": "R"
+      },
+      {
+        "command": "supervisor.insertPipeOperator",
+        "title": "Insert Pipe Operator (|>)",
+        "category": "R"
+      },
+      {
+        "command": "supervisor.help.showHelpAtCursor",
+        "title": "Show Help at Cursor",
+        "category": "Ark Help"
+      },
+      {
+        "command": "supervisor.help.lookupHelpTopic",
+        "title": "Look Up Help Topic",
+        "category": "Ark Help"
+      },
+      {
+        "command": "supervisor.help.showWelcome",
+        "title": "Show Help Welcome",
+        "category": "Ark Help"
+      },
+      {
+        "command": "supervisor.help.find",
+        "title": "Find in Help",
+        "category": "Ark Help",
+        "icon": "$(search)"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "supervisor.runCurrentStatement",
+        "key": "ctrl+enter",
+        "mac": "cmd+enter",
+        "when": "editorTextFocus && editorLangId == r"
+      },
+      {
+        "command": "supervisor.console.executeCodeWithoutAdvancing",
+        "key": "alt+enter",
+        "when": "editorTextFocus && editorLangId == r"
+      },
+      {
+        "command": "supervisor.insertAssignmentOperator",
+        "key": "alt+oem_minus",
+        "mac": "alt+-",
+        "when": "editorTextFocus && editorLangId == r"
+      },
+      {
+        "command": "supervisor.insertPipeOperator",
+        "key": "ctrl+shift+m",
+        "mac": "cmd+shift+m",
+        "when": "editorTextFocus && editorLangId == r"
+      },
+      {
+        "command": "editor.action.triggerSuggest",
+        "key": "tab",
+        "when": "editorTextFocus && editorLangId == r && supervisor.shouldTabComplete && !suggestWidgetVisible && !inlineSuggestionVisible && !editorTabMovesFocus"
+      },
+      {
+        "command": "supervisor.help.showHelpAtCursor",
+        "key": "f1",
+        "when": "editorTextFocus && editorLangId == r"
+      },
+      {
+        "command": "supervisor.help.find",
+        "key": "ctrl+f",
+        "mac": "cmd+f",
+        "when": "view == supervisor.help"
+      }
+    ],
+    "configuration": {
+      "title": "Ark",
+      "properties": {
+        "ark.r.path": {
+          "type": "string",
+          "default": "",
+          "description": "Path to R binary (e.g., /usr/local/bin/R). Leave empty for auto-detection."
+        },
+        "ark.r.condaDiscovery": {
+          "type": "boolean",
+          "default": true,
+          "description": "Discover R installations in Conda environments (experimental)."
+        },
+        "positron.reticulate.enabled": {
+          "type": "string",
+          "default": "auto",
+          "enum": [
+            "auto",
+            "never",
+            "always"
+          ],
+          "description": "Compatibility setting for Positron reticulate auto-enable behavior."
+        },
+        "ark.kernel.path": {
+          "type": "string",
+          "default": "",
+          "description": "Path to ARK kernel binary. Leave empty to use bundled kernel."
+        },
+        "ark.kernel.logLevel": {
+          "type": "string",
+          "default": "info",
+          "enum": [
+            "trace",
+            "debug",
+            "info",
+            "warn",
+            "error"
+          ],
+          "description": "Log level for the ARK kernel."
+        },
+        "ark.kernel.logLevelExternal": {
+          "type": "string",
+          "default": "info",
+          "enum": [
+            "trace",
+            "debug",
+            "info",
+            "warn",
+            "error"
+          ],
+          "description": "Log level for external crates in ARK."
+        },
+        "ark.saveAndRestoreWorkspace": {
+          "type": "boolean",
+          "default": false,
+          "description": "Save and restore R workspace between sessions."
+        },
+        "ark.quietMode": {
+          "type": "boolean",
+          "default": false,
+          "description": "Start R in quiet mode (suppress startup messages)."
+        },
+        "ark.extraArguments": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "description": "Extra command line arguments to pass to R."
+        }
+      }
+    },
+    "configurationDefaults": {
+      "[r]": {
+        "editor.formatOnType": true,
+        "editor.tabSize": 2,
+        "editor.wordSeparators": "`~!@#$%^&*()-=+[{]}\\|;:'\",<>/?",
+        "editor.smartSelect.selectLeadingAndTrailingWhitespace": false
+      }
+    },
+    "breakpoints": [
+      {
+        "language": "r"
+      }
+    ],
+    "debuggers": [
+      {
+        "type": "ark",
+        "label": "R Debugger",
+        "languages": [
+          "r"
+        ],
+        "supportsUiLaunch": false,
+        "supportsFrameSelection": true,
+        "sendBreakpointsOnAllSaves": true,
+        "verifyBreakpointsInDirtyDocuments": true
+      }
+    ]
+  },
+  "dependencies": {
+    "@duckdb/duckdb-wasm": "^1.32.0",
+    "apache-arrow": "^21.1.0",
+    "axios": "^1.13.6",
+    "p-queue": "^6.6.2",
+    "tail": "^2.2.6",
+    "vscode-jsonrpc": "^8.2.1",
+    "vscode-languageclient": "^9.0.1",
+    "web-worker": "^1.5.0",
+    "ws": "^8.19.0"
+  },
+  "devDependencies": {
+    "@types/mocha": "^10.0.10",
+    "@types/node": "25.x",
+    "@types/tail": "^2.2.3",
+    "@types/vscode": "^1.105",
+    "@types/ws": "^8.18.1",
+    "@vscode/test-cli": "^0.0.12",
+    "@vscode/test-electron": "^2.5.2",
+    "@vscode/vsce": "^3.7.1",
+    "copy-webpack-plugin": "^14.0.0",
+    "eslint": "^10.1.0",
+    "ovsx": "^0.10.9",
+    "ts-loader": "^9.5.4",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.57.1",
+    "webpack": "^5.105.4",
+    "webpack-cli": "^7.0.2"
+  }
+}
