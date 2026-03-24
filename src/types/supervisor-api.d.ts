@@ -1,8 +1,8 @@
 import * as vscode from 'vscode';
 import type { LanguageRuntimeExit } from './internal/runtimeTypes';
-import { RuntimeState } from './internal/runtimeTypes';
+import { RuntimeExitReason, RuntimeStartMode, RuntimeState } from './internal/runtimeTypes';
 export type { LanguageRuntimeExit } from './internal/runtimeTypes';
-export { RuntimeState } from './internal/runtimeTypes';
+export { RuntimeExitReason, RuntimeStartMode, RuntimeState } from './internal/runtimeTypes';
 export declare enum LanguageRuntimeSessionMode {
     Console = "console",
     Notebook = "notebook",
@@ -40,6 +40,8 @@ export interface IRuntimeSessionMetadata {
     sessionMode: LanguageRuntimeSessionMode;
     notebookUri?: vscode.Uri;
     workingDirectory?: string;
+    createdTimestamp: number;
+    startReason: string;
 }
 export interface LanguageRuntimeDynState {
     sessionName: string;
@@ -47,6 +49,7 @@ export interface LanguageRuntimeDynState {
     continuationPrompt: string;
     busy?: boolean;
     currentWorkingDirectory?: string;
+    currentNotebookUri?: vscode.Uri;
 }
 export interface JupyterKernelSpec {
     argv: Array<string>;
@@ -181,6 +184,7 @@ export interface ILanguageRuntimeSession {
     readonly created: number;
     readonly dynState: LanguageRuntimeDynState;
     readonly runtimeMetadata: LanguageRuntimeMetadata;
+    readonly metadata: IRuntimeSessionMetadata;
     readonly sessionMetadata: IRuntimeSessionMetadata;
     readonly lsp: ILanguageLsp;
     readonly onDidChangeRuntimeState: vscode.Event<RuntimeState>;
@@ -194,19 +198,63 @@ export interface ILanguageRuntimeSession {
     setConsoleWidth(widthInChars: number): Promise<void>;
     watchRuntimeClient(clientType: LanguageRuntimeClientType, handler: (client: ILanguageRuntimeClientInstance) => void): vscode.Disposable;
     waitLsp(): Promise<ILanguageLsp | undefined>;
+    getRuntimeState(): RuntimeState;
     interrupt(): Promise<void>;
+}
+export interface IRuntimeSessionWillStartEvent {
+    session: ILanguageRuntimeSession;
+    startMode: RuntimeStartMode;
+    hasConsole: boolean;
+    activate: boolean;
+}
+export interface ILanguageRuntimeSessionStateEvent {
+    session_id: string;
+    old_state: RuntimeState;
+    new_state: RuntimeState;
+}
+export interface INotebookSessionUriChangedEvent {
+    sessionId: string;
+    oldUri: vscode.Uri;
+    newUri: vscode.Uri;
+}
+export interface IRuntimeManager {
+    readonly id: number;
+    discoverAllRuntimes(disabledLanguageIds: string[]): Promise<void>;
+    recommendWorkspaceRuntimes(disabledLanguageIds: string[]): Promise<LanguageRuntimeMetadata[]>;
 }
 export interface IRuntimeSessionService {
     readonly activeSession: ILanguageRuntimeSession | undefined;
-    readonly foregroundSession: ILanguageRuntimeSession | undefined;
+    foregroundSession: ILanguageRuntimeSession | undefined;
+    readonly activeSessions: readonly ILanguageRuntimeSession[];
     readonly sessions: readonly ILanguageRuntimeSession[];
+    readonly onWillStartSession: vscode.Event<IRuntimeSessionWillStartEvent>;
+    readonly onDidStartRuntime: vscode.Event<ILanguageRuntimeSession>;
+    readonly onDidFailStartRuntime: vscode.Event<ILanguageRuntimeSession>;
     readonly onDidCreateSession: vscode.Event<ILanguageRuntimeSession>;
     readonly onDidDeleteSession: vscode.Event<string>;
+    readonly onDidDeleteRuntimeSession: vscode.Event<string>;
     readonly onDidChangeActiveSession: vscode.Event<ILanguageRuntimeSession | undefined>;
     readonly onDidChangeForegroundSession: vscode.Event<ILanguageRuntimeSession | undefined>;
+    readonly onDidChangeRuntimeState: vscode.Event<ILanguageRuntimeSessionStateEvent>;
+    readonly onDidUpdateNotebookSessionUri: vscode.Event<INotebookSessionUriChangedEvent>;
+    readonly onDidUpdateSessionName: vscode.Event<ILanguageRuntimeSession>;
     getSession(sessionId: string): ILanguageRuntimeSession | undefined;
+    getActiveSession(sessionId: string): unknown;
+    getActiveSessions(): unknown[];
+    getConsoleSessionForRuntime(runtimeId: string): ILanguageRuntimeSession | undefined;
+    getConsoleSessionForLanguage(languageId: string): ILanguageRuntimeSession | undefined;
+    getNotebookSessionForNotebookUri(notebookUri: vscode.Uri): ILanguageRuntimeSession | undefined;
     ensureSessionForLanguage(languageId: string, sessionName?: string): Promise<ILanguageRuntimeSession>;
-    restartSession(sessionId: string): Promise<void>;
+    startNewRuntimeSession(runtimeId: string, sessionName: string, sessionMode: LanguageRuntimeSessionMode, notebookUri: vscode.Uri | undefined, source: string, startMode: RuntimeStartMode, activate: boolean): Promise<string>;
+    autoStartRuntime(metadata: LanguageRuntimeMetadata, source: string, activate: boolean): Promise<string>;
+    selectRuntime(runtimeId: string, source: string, notebookUri?: vscode.Uri): Promise<void>;
+    focusSession(sessionId: string): void;
+    restartSession(sessionId: string, source: string, interrupt?: boolean): Promise<void>;
+    interruptSession(sessionId: string): Promise<void>;
+    deleteSession(sessionId: string): Promise<boolean>;
+    shutdownNotebookSession(notebookUri: vscode.Uri, exitReason: RuntimeExitReason, source: string): Promise<void>;
+    updateNotebookSessionUri(oldUri: vscode.Uri, newUri: vscode.Uri): Promise<string | undefined>;
+    updateSessionName(sessionId: string, name: string): void;
     selectInstallation<TInstallation = unknown>(languageId: string, options?: ILanguageInstallationPickerOptions): Promise<TInstallation | undefined>;
 }
 export interface IPositronConsoleService {
@@ -229,14 +277,14 @@ export declare enum RuntimeStartupPhase {
     AwaitingTrust = "awaitingTrust",
     Reconnecting = "reconnecting",
     Starting = "starting",
+    NewFolderTasks = "newFolderTasks",
     Discovering = "discovering",
     Complete = "complete"
 }
 export interface IRuntimeAutoStartEvent {
-    runtimeName: string;
-    languageName: string;
-    base64EncodedIconSvg?: string;
+    runtime: LanguageRuntimeMetadata;
     newSession: boolean;
+    activate: boolean;
 }
 export interface SerializedSessionMetadata {
     sessionName: string;
@@ -255,17 +303,21 @@ export interface IRuntimeStartupService {
     readonly onWillAutoStartRuntime: vscode.Event<IRuntimeAutoStartEvent>;
     readonly onSessionRestoreFailure: vscode.Event<ISessionRestoreFailedEvent>;
     startup(): Promise<void>;
+    resetArchitectureMismatchWarning(languageId?: string): void;
     hasAffiliatedRuntime(): boolean;
     getAffiliatedRuntimeMetadata(languageId: string): LanguageRuntimeMetadata | undefined;
     getAffiliatedRuntimes(): LanguageRuntimeMetadata[];
     clearAffiliatedRuntime(languageId: string): void;
     getPreferredRuntime(languageId: string): LanguageRuntimeMetadata | undefined;
-    getRestoredSessions(): SerializedSessionMetadata[];
+    getRestoredSessions(): Promise<SerializedSessionMetadata[]>;
+    completeDiscovery(id: number): void;
+    registerRuntimeManager(manager: IRuntimeManager): vscode.Disposable;
     rediscoverAllRuntimes(): Promise<void>;
 }
 export interface ILanguageContributionServices {
     readonly logChannel: vscode.LogOutputChannel;
     readonly runtimeSessionService: IRuntimeSessionService;
+    readonly runtimeStartupService: IRuntimeStartupService;
     readonly positronConsoleService: IPositronConsoleService;
     readonly positronHelpService: IPositronHelpService;
 }

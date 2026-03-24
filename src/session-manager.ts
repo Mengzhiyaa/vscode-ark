@@ -31,15 +31,15 @@ export class RSessionManager implements vscode.Disposable {
         private readonly _positronConsoleService: IPositronConsoleService,
         private readonly _logChannel: vscode.LogOutputChannel,
     ) {
-        for (const session of _runtimeSessionService.sessions) {
+        for (const session of _runtimeSessionService.activeSessions) {
             this.setSession(session);
         }
 
         this._disposables.push(
-            _runtimeSessionService.onDidCreateSession((session) => {
-                this.setSession(session);
+            _runtimeSessionService.onWillStartSession((event) => {
+                this.setSession(event.session);
             }),
-            _runtimeSessionService.onDidDeleteSession((sessionId) => {
+            _runtimeSessionService.onDidDeleteRuntimeSession((sessionId) => {
                 this.deleteSession(sessionId);
             }),
             _runtimeSessionService.onDidChangeForegroundSession((session) => {

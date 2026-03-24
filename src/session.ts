@@ -52,7 +52,7 @@ export class RSession implements vscode.Disposable {
     }
 
     get metadata(): IRuntimeSessionMetadata {
-        return this._session.sessionMetadata;
+        return this._session.metadata;
     }
 
     get runtimeMetadata(): LanguageRuntimeMetadata {

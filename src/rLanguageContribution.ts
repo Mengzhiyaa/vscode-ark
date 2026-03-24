@@ -322,6 +322,24 @@ export class RLanguageContribution implements ILanguageExtensionContribution {
             vscode.commands.registerCommand(RCommandIds.startConsole, async () => {
                 try {
                     services.positronConsoleService.showConsole();
+
+                    const existingSession =
+                        services.runtimeSessionService.getConsoleSessionForLanguage(R_LANGUAGE_ID);
+                    if (existingSession) {
+                        services.runtimeSessionService.focusSession(existingSession.sessionId);
+                        return;
+                    }
+
+                    const preferredRuntime =
+                        services.runtimeStartupService.getPreferredRuntime(R_LANGUAGE_ID);
+                    if (preferredRuntime) {
+                        await services.runtimeSessionService.selectRuntime(
+                            preferredRuntime.runtimeId,
+                            'positron.r.startConsole command',
+                        );
+                        return;
+                    }
+
                     await services.runtimeSessionService.ensureSessionForLanguage(R_LANGUAGE_ID);
                 } catch (error) {
                     services.logChannel.error(`[R] Failed to start console session: ${error}`);
@@ -329,13 +347,16 @@ export class RLanguageContribution implements ILanguageExtensionContribution {
                 }
             }),
             vscode.commands.registerCommand(RCommandIds.restartKernel, async () => {
-                const session = services.runtimeSessionService.activeSession;
+                const session = services.runtimeSessionService.foregroundSession;
                 if (!session || session.runtimeMetadata.languageId !== R_LANGUAGE_ID) {
                     vscode.window.showWarningMessage('No active R session');
                     return;
                 }
 
-                await services.runtimeSessionService.restartSession(session.sessionId);
+                await services.runtimeSessionService.restartSession(
+                    session.sessionId,
+                    'positron.r.restartKernel command',
+                );
             }),
             vscode.commands.registerCommand(RCommandIds.selectRPath, async () => {
                 const activeSession = services.runtimeSessionService.activeSession;
