@@ -15,7 +15,7 @@ import type {
     LanguageRuntimeSessionLocation,
     LanguageRuntimeStartupBehavior,
     LanguageSessionMode,
-    RuntimeSessionMetadata,
+    IRuntimeSessionMetadata,
 } from './types/supervisor-api';
 import { RCommandIds } from './rCommandIds';
 import { registerTabCompletion } from './editor/tabCompletion';
@@ -110,7 +110,7 @@ export class RLanguageLspFactory implements ILanguageLspFactory {
 
     create(
         runtimeMetadata: LanguageRuntimeMetadata,
-        sessionMetadata: RuntimeSessionMetadata,
+        sessionMetadata: IRuntimeSessionMetadata,
         dynState: LanguageRuntimeDynState,
         logChannel: vscode.LogOutputChannel
     ): ILanguageLsp {
@@ -297,14 +297,14 @@ export class RLanguageContribution implements ILanguageExtensionContribution {
         services: ILanguageContributionServices,
     ): vscode.Disposable[] {
         registerTabCompletion(this._extensionContext);
-        const sessionManager = new RSessionManager(
+        const runtimeSessionManager = new RSessionManager(
             this._extensionContext,
-            services.sessionService,
-            services.consoleService,
+            services.runtimeSessionService,
+            services.positronConsoleService,
             services.logChannel,
         );
         return [
-            sessionManager,
+            runtimeSessionManager,
             ...registerHelpActions(
                 this.runtimeProvider.languageId,
                 this.runtimeProvider.languageName,
@@ -321,25 +321,25 @@ export class RLanguageContribution implements ILanguageExtensionContribution {
             }),
             vscode.commands.registerCommand(RCommandIds.startConsole, async () => {
                 try {
-                    services.consoleService.showConsole();
-                    await services.sessionService.ensureSessionForLanguage(R_LANGUAGE_ID);
+                    services.positronConsoleService.showConsole();
+                    await services.runtimeSessionService.ensureSessionForLanguage(R_LANGUAGE_ID);
                 } catch (error) {
                     services.logChannel.error(`[R] Failed to start console session: ${error}`);
                     vscode.window.showErrorMessage(`Failed to start R session: ${error}`);
                 }
             }),
             vscode.commands.registerCommand(RCommandIds.restartKernel, async () => {
-                const session = services.sessionService.activeSession;
+                const session = services.runtimeSessionService.activeSession;
                 if (!session || session.runtimeMetadata.languageId !== R_LANGUAGE_ID) {
                     vscode.window.showWarningMessage('No active R session');
                     return;
                 }
 
-                await services.sessionService.restartSession(session.sessionId);
+                await services.runtimeSessionService.restartSession(session.sessionId);
             }),
             vscode.commands.registerCommand(RCommandIds.selectRPath, async () => {
-                const activeSession = services.sessionService.activeSession;
-                const installation = await services.sessionService.selectInstallation<RInstallation>(
+                const activeSession = services.runtimeSessionService.activeSession;
+                const installation = await services.runtimeSessionService.selectInstallation<RInstallation>(
                     R_LANGUAGE_ID,
                     {
                         forcePick: true,
@@ -365,7 +365,7 @@ export class RLanguageContribution implements ILanguageExtensionContribution {
                     return;
                 }
 
-                const session = services.sessionService.activeSession;
+                const session = services.runtimeSessionService.activeSession;
                 if (!session || session.runtimeMetadata.languageId !== R_LANGUAGE_ID) {
                     vscode.window.showWarningMessage('No active R session. Start a console first.');
                     return;
@@ -413,7 +413,7 @@ export class RLanguageContribution implements ILanguageExtensionContribution {
                     return;
                 }
 
-                await services.consoleService.executeCode(
+                await services.positronConsoleService.executeCode(
                     editor.document.languageId,
                     session.sessionId,
                     code,

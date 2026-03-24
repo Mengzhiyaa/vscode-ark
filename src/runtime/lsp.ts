@@ -10,7 +10,7 @@ import type {
     ILanguageLspStateChangeEvent,
     LanguageLspState,
     LanguageRuntimeDynState,
-    RuntimeSessionMetadata,
+    IRuntimeSessionMetadata,
 } from '../types/supervisor-api';
 import {
     LanguageClient,
@@ -113,7 +113,7 @@ export class RLanguageLsp implements ILanguageLsp {
 
     public constructor(
         private readonly _version: string,
-        private readonly _metadata: RuntimeSessionMetadata,
+        private readonly _metadata: IRuntimeSessionMetadata,
         private readonly _dynState: LanguageRuntimeDynState,
         logChannel: vscode.LogOutputChannel,
     ) {

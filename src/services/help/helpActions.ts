@@ -13,7 +13,11 @@ export function registerHelpActions(
     services: ILanguageContributionServices
 ): vscode.Disposable[] {
     const disposables: vscode.Disposable[] = [];
-    const { helpService, logChannel, sessionService } = services;
+    const {
+        positronHelpService,
+        logChannel,
+        runtimeSessionService,
+    } = services;
 
     disposables.push(
         vscode.commands.registerCommand(RCommandIds.helpShowHelpAtCursor, async () => {
@@ -34,7 +38,7 @@ export function registerHelpActions(
                 return;
             }
 
-            const session = sessionService.activeSession;
+            const session = runtimeSessionService.activeSession;
             if (!session || session.runtimeMetadata.languageId !== languageId) {
                 vscode.window.showInformationMessage(`No active ${languageName} session. Start a session to view help.`);
                 return;
@@ -61,7 +65,7 @@ export function registerHelpActions(
                 }
 
                 if (typeof topic === 'string' && topic.length > 0) {
-                    const found = await helpService.showHelpTopic(languageId, topic);
+                    const found = await positronHelpService.showHelpTopic(languageId, topic);
                     if (!found) {
                         vscode.window.showInformationMessage(`No help available for '${topic}'.`);
                     }
@@ -77,7 +81,7 @@ export function registerHelpActions(
 
     disposables.push(
         vscode.commands.registerCommand(RCommandIds.helpLookupHelpTopic, async () => {
-            const session = sessionService.activeSession;
+            const session = runtimeSessionService.activeSession;
             if (!session || session.runtimeMetadata.languageId !== languageId) {
                 vscode.window.showInformationMessage(`No active ${languageName} session. Start a session to view help.`);
                 return;
@@ -100,7 +104,7 @@ export function registerHelpActions(
             }
 
             try {
-                const found = await helpService.showHelpTopic(session.runtimeMetadata.languageId, topic);
+                const found = await positronHelpService.showHelpTopic(session.runtimeMetadata.languageId, topic);
                 if (!found) {
                     vscode.window.showInformationMessage(`No help found for '${topic}'.`);
                 }
@@ -113,13 +117,13 @@ export function registerHelpActions(
 
     disposables.push(
         vscode.commands.registerCommand(RCommandIds.helpShowWelcome, () => {
-            helpService.showWelcomePage();
+            positronHelpService.showWelcomePage();
         })
     );
 
     disposables.push(
         vscode.commands.registerCommand(RCommandIds.helpFind, async () => {
-            await helpService.find();
+            await positronHelpService.find();
         })
     );
 

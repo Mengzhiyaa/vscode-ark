@@ -1,13 +1,13 @@
 import * as vscode from 'vscode';
 import PQueue from 'p-queue';
-import {
-    IConsoleContributionService,
+import type {
+    IPositronConsoleService,
     ILanguageLsp,
     ILanguageRuntimeClientInstance,
-    ILanguageSession,
+    ILanguageRuntimeSession,
     LanguageRuntimeClientType,
     LanguageRuntimeExit,
-    RuntimeSessionMetadata,
+    IRuntimeSessionMetadata,
     LanguageRuntimeMetadata,
     RuntimeState,
 } from './types/supervisor-api';
@@ -31,15 +31,15 @@ export class RSession implements vscode.Disposable {
     readonly onDidChangeWorkingDirectory: vscode.Event<string>;
 
     constructor(
-        private readonly _session: ILanguageSession,
-        private readonly _consoleService: IConsoleContributionService,
+        private readonly _session: ILanguageRuntimeSession,
+        private readonly _positronConsoleService: IPositronConsoleService,
         private readonly _logChannel: vscode.LogOutputChannel,
     ) {
         this.onDidChangeRuntimeState = _session.onDidChangeRuntimeState;
         this.onDidEndSession = _session.onDidEndSession;
         this.onDidChangeWorkingDirectory = _session.onDidChangeWorkingDirectory;
 
-        this.register(this._consoleService.onDidChangeConsoleWidth((newWidth) => {
+        this.register(this._positronConsoleService.onDidChangeConsoleWidth((newWidth) => {
             void this.onConsoleWidthChange(newWidth);
         }));
         this.register(this.onDidChangeRuntimeState(async (state) => {
@@ -51,7 +51,7 @@ export class RSession implements vscode.Disposable {
         return this._session.sessionId;
     }
 
-    get metadata(): RuntimeSessionMetadata {
+    get metadata(): IRuntimeSessionMetadata {
         return this._session.sessionMetadata;
     }
 
@@ -176,7 +176,7 @@ export class RSession implements vscode.Disposable {
 
     private async setConsoleWidth(): Promise<void> {
         try {
-            await this._session.setConsoleWidth(this._consoleService.getConsoleWidth());
+            await this._session.setConsoleWidth(this._positronConsoleService.getConsoleWidth());
         } catch (error) {
             this.log(`Failed to set initial console width: ${error}`, vscode.LogLevel.Debug);
         }

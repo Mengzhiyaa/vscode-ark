@@ -1,9 +1,9 @@
 import * as vscode from 'vscode';
 import PQueue from 'p-queue';
-import {
-    IConsoleContributionService,
-    ILanguageSession,
-    ILanguageSessionService,
+import type {
+    IPositronConsoleService,
+    ILanguageRuntimeSession,
+    IRuntimeSessionService,
     LanguageRuntimeClientType,
     RuntimeState,
 } from './types/supervisor-api';
@@ -17,6 +17,7 @@ const SESSION_MODE_BACKGROUND = 'background';
 const RUNTIME_STATE_READY = 'ready';
 const RUNTIME_STATE_UNINITIALIZED = 'uninitialized';
 const RUNTIME_STATE_EXITED = 'exited';
+const RUNTIME_CLIENT_TYPE_RETICULATE = 'positron.reticulate' as LanguageRuntimeClientType;
 
 export class RSessionManager implements vscode.Disposable {
     private readonly _sessions = new Map<string, RSession>();
@@ -26,22 +27,22 @@ export class RSessionManager implements vscode.Disposable {
 
     constructor(
         private readonly _context: vscode.ExtensionContext,
-        private readonly _sessionService: ILanguageSessionService,
-        private readonly _consoleService: IConsoleContributionService,
+        private readonly _runtimeSessionService: IRuntimeSessionService,
+        private readonly _positronConsoleService: IPositronConsoleService,
         private readonly _logChannel: vscode.LogOutputChannel,
     ) {
-        for (const session of _sessionService.sessions) {
+        for (const session of _runtimeSessionService.sessions) {
             this.setSession(session);
         }
 
         this._disposables.push(
-            _sessionService.onDidCreateSession((session) => {
+            _runtimeSessionService.onDidCreateSession((session) => {
                 this.setSession(session);
             }),
-            _sessionService.onDidDeleteSession((sessionId) => {
+            _runtimeSessionService.onDidDeleteSession((sessionId) => {
                 this.deleteSession(sessionId);
             }),
-            _sessionService.onDidChangeForegroundSession((session) => {
+            _runtimeSessionService.onDidChangeForegroundSession((session) => {
                 void this.enqueueActivation(() => this.didChangeForegroundSession(session?.sessionId));
             }),
         );
@@ -55,12 +56,12 @@ export class RSessionManager implements vscode.Disposable {
         await this._context.workspaceState.update(LAST_FOREGROUND_SESSION_ID_KEY, sessionId);
     }
 
-    setSession(session: ILanguageSession): void {
+    setSession(session: ILanguageRuntimeSession): void {
         if (!this.isRSession(session) || this._sessions.has(session.sessionId)) {
             return;
         }
 
-        const rSession = new RSession(session, this._consoleService, this._logChannel);
+        const rSession = new RSession(session, this._positronConsoleService, this._logChannel);
         this._sessions.set(session.sessionId, rSession);
 
         rSession.register(
@@ -69,7 +70,7 @@ export class RSessionManager implements vscode.Disposable {
             }),
         );
         rSession.register(
-            rSession.watchRuntimeClient(LanguageRuntimeClientType.Reticulate, (client) => {
+            rSession.watchRuntimeClient(RUNTIME_CLIENT_TYPE_RETICULATE, (client) => {
                 if (!this._unsupportedReticulateNotifiedSessionIds.has(rSession.sessionId)) {
                     this._unsupportedReticulateNotifiedSessionIds.add(rSession.sessionId);
                     this._logChannel.warn(
@@ -195,7 +196,7 @@ export class RSessionManager implements vscode.Disposable {
         return this._activationQueue.add(task);
     }
 
-    private isRSession(session: ILanguageSession): boolean {
+    private isRSession(session: ILanguageRuntimeSession): boolean {
         return session.runtimeMetadata.languageId === R_LANGUAGE_ID;
     }
 
