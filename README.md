@@ -30,7 +30,7 @@ dependency flow.
 - `.github/workflows/release.yml` builds tagged target VSIX artifacts, creates a GitHub Release, and publishes to marketplaces when `VSCE_PAT` and `OVSX_PAT` secrets are configured.
 - Release runs can also be started manually with `workflow_dispatch`, while tagged pushes matching `v*` remain the default publish trigger.
 - The repository should define `VSCE_PAT` for Visual Studio Marketplace publishing and `OVSX_PAT` for Open VSX publishing.
-- The ark release/CI workflow checks out `Blakfs24/vscode-supervisor` into `.deps/vscode-supervisor` to verify the copied public API and run extension tests against a local supervisor dev extension.
+- The ark release/CI workflow checks out `Mengzhiyaa/vscode-supervisor` into `.deps/vscode-supervisor` to verify the copied public API and run extension tests against a local supervisor dev extension.
 
 ## Packaging
 

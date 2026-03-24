@@ -4,11 +4,11 @@
   "license": "SEE LICENSE IN LICENSE.txt",
   "repository": {
     "type": "git",
-    "url": "https://github.com/Blakfs24/vscode-ark"
+    "url": "https://github.com/Mengzhiyaa/vscode-ark"
   },
-  "homepage": "https://github.com/Blakfs24/vscode-ark#readme",
+  "homepage": "https://github.com/Mengzhiyaa/vscode-ark#readme",
   "bugs": {
-    "url": "https://github.com/Blakfs24/vscode-ark/issues"
+    "url": "https://github.com/Mengzhiyaa/vscode-ark/issues"
   },
   "workspaces": [
     "webview"

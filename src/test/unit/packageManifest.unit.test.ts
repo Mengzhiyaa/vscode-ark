@@ -45,9 +45,9 @@ suite('[Unit] R package manifest', () => {
         assert.strictEqual(packageJson.main, './dist/extension.js');
         assert.deepStrictEqual(packageJson.extensionDependencies, ['ark.vscode-supervisor']);
         assert.strictEqual(packageJson.repository?.type, 'git');
-        assert.strictEqual(packageJson.repository?.url, 'https://github.com/Blakfs24/vscode-ark');
-        assert.strictEqual(packageJson.homepage, 'https://github.com/Blakfs24/vscode-ark#readme');
-        assert.strictEqual(packageJson.bugs?.url, 'https://github.com/Blakfs24/vscode-ark/issues');
+        assert.strictEqual(packageJson.repository?.url, 'https://github.com/Mengzhiyaa/vscode-ark');
+        assert.strictEqual(packageJson.homepage, 'https://github.com/Mengzhiyaa/vscode-ark#readme');
+        assert.strictEqual(packageJson.bugs?.url, 'https://github.com/Mengzhiyaa/vscode-ark/issues');
         assert.deepStrictEqual(packageJson.workspaces, ['webview']);
         assert.strictEqual(packageJson.positron?.binaryDependencies?.ark, '0.1.242');
         assert.ok(packageJson.devDependencies?.['@vscode/vsce']);
