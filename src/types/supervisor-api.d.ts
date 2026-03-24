@@ -44,6 +44,26 @@ export interface LanguageRuntimeDynState {
     busy?: boolean;
     currentWorkingDirectory?: string;
 }
+export declare enum RuntimeState {
+    Uninitialized = "uninitialized",
+    Initializing = "initializing",
+    Starting = "starting",
+    Ready = "ready",
+    Idle = "idle",
+    Busy = "busy",
+    Restarting = "restarting",
+    Exiting = "exiting",
+    Exited = "exited",
+    Offline = "offline",
+    Interrupting = "interrupting"
+}
+export interface LanguageRuntimeExit {
+    runtime_name: string;
+    session_name?: string;
+    exit_code: number;
+    reason: string;
+    message: string;
+}
 export interface JupyterKernelSpec {
     argv: Array<string>;
     display_name: string;
@@ -153,24 +173,62 @@ export interface ICodeExecutionAttribution {
     lineNumber?: number;
     metadata?: Record<string, unknown>;
 }
+export declare enum LanguageRuntimeClientType {
+    Variables = "positron.variables",
+    Lsp = "positron.lsp",
+    Plot = "positron.plot",
+    DataExplorer = "positron.dataExplorer",
+    Ui = "positron.ui",
+    Help = "positron.help",
+    Connection = "positron.connection",
+    Reticulate = "positron.reticulate",
+    IPyWidget = "jupyter.widget",
+    IPyWidgetControl = "jupyter.widget.control"
+}
+export interface ILanguageRuntimeClientInstance extends vscode.Disposable {
+    getClientId(): string;
+    getClientType(): LanguageRuntimeClientType;
+}
 export interface ILanguageSession {
     readonly sessionId: string;
+    readonly state: RuntimeState;
+    readonly isForeground: boolean;
+    readonly workingDirectory: string | undefined;
+    readonly created: number;
+    readonly dynState: LanguageRuntimeDynState;
     readonly runtimeMetadata: LanguageRuntimeMetadata;
     readonly sessionMetadata: RuntimeSessionMetadata;
     readonly lsp: ILanguageLsp;
+    readonly onDidChangeRuntimeState: vscode.Event<RuntimeState>;
+    readonly onDidEndSession: vscode.Event<LanguageRuntimeExit>;
+    readonly onDidChangeWorkingDirectory: vscode.Event<string>;
+    activateLsp(): Promise<void>;
+    deactivateLsp(): Promise<void>;
+    startDap(targetName: string, debugType: string, debugName: string): Promise<void>;
+    connectDap(): Promise<boolean>;
+    disconnectDap(): Promise<void>;
+    setConsoleWidth(widthInChars: number): Promise<void>;
+    watchRuntimeClient(clientType: LanguageRuntimeClientType, handler: (client: ILanguageRuntimeClientInstance) => void): vscode.Disposable;
     waitLsp(): Promise<ILanguageLsp | undefined>;
     interrupt(): Promise<void>;
 }
 export interface ILanguageSessionService {
     readonly activeSession: ILanguageSession | undefined;
+    readonly foregroundSession: ILanguageSession | undefined;
     readonly sessions: readonly ILanguageSession[];
+    readonly onDidCreateSession: vscode.Event<ILanguageSession>;
+    readonly onDidDeleteSession: vscode.Event<string>;
     readonly onDidChangeActiveSession: vscode.Event<ILanguageSession | undefined>;
+    readonly onDidChangeForegroundSession: vscode.Event<ILanguageSession | undefined>;
+    getSession(sessionId: string): ILanguageSession | undefined;
     ensureSessionForLanguage(languageId: string, sessionName?: string): Promise<ILanguageSession>;
     restartSession(sessionId: string): Promise<void>;
     selectInstallation<TInstallation = unknown>(languageId: string, options?: ILanguageInstallationPickerOptions): Promise<TInstallation | undefined>;
 }
 export interface IConsoleContributionService {
+    readonly onDidChangeConsoleWidth: vscode.Event<number>;
     showConsole(): void;
+    getConsoleWidth(): number;
     executeCode(languageId: string, sessionId: string | undefined, code: string, attribution: ICodeExecutionAttribution, focus: boolean): Promise<string>;
 }
 export interface IHelpContributionService {
@@ -206,8 +264,7 @@ export interface ILanguageSupportRegistration<TInstallation = unknown> {
 export interface ILanguageRuntimeRegistration<TInstallation = unknown> {
     readonly provider: ILanguageRuntimeProvider<TInstallation>;
 }
-export interface ISupervisorSessionManagerApi {
-    selectInstallation<TInstallation = unknown>(languageId: string, options?: ILanguageInstallationPickerOptions): Promise<TInstallation | undefined>;
+export interface ISupervisorSessionManagerApi extends ILanguageSessionService {
 }
 export interface ISupervisorFrameworkApi {
     readonly sessionManager: ISupervisorSessionManagerApi;

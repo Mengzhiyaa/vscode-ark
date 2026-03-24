@@ -23,6 +23,7 @@ import { registerHelpActions } from './services/help/helpActions';
 import { R_LANGUAGE_ID } from './languageIds';
 import { createJupyterKernelSpec } from './runtime/kernelSpec';
 import { RLanguageLsp } from './runtime/lsp';
+import { RSessionManager } from './session-manager';
 import {
     formatRuntimeName,
     getBestRInstallation,
@@ -296,12 +297,28 @@ export class RLanguageContribution implements ILanguageExtensionContribution {
         services: ILanguageContributionServices,
     ): vscode.Disposable[] {
         registerTabCompletion(this._extensionContext);
+        const sessionManager = new RSessionManager(
+            this._extensionContext,
+            services.sessionService,
+            services.consoleService,
+            services.logChannel,
+        );
         return [
+            sessionManager,
             ...registerHelpActions(
                 this.runtimeProvider.languageId,
                 this.runtimeProvider.languageName,
                 services
             ),
+            vscode.commands.registerCommand('positron.reticulate.isAutoEnabled', () => {
+                return false;
+            }),
+            vscode.commands.registerCommand('positron.reticulate.setAutoEnabled', async () => {
+                return null;
+            }),
+            vscode.commands.registerCommand('positron.reticulate.resetAutoEnabled', async () => {
+                return null;
+            }),
             vscode.commands.registerCommand(RCommandIds.startConsole, async () => {
                 try {
                     services.consoleService.showConsole();
