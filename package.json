@@ -201,13 +201,13 @@
         },
         "positron.reticulate.enabled": {
           "type": "string",
-          "default": "auto",
+          "default": "never",
           "enum": [
             "auto",
             "never",
             "always"
           ],
-          "description": "Compatibility setting for Positron reticulate auto-enable behavior."
+          "description": "Compatibility stub setting. Ark does not support reticulate sessions."
         },
         "ark.kernel.path": {
           "type": "string",

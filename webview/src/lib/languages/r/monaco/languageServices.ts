@@ -8,8 +8,11 @@
  * Each console registers its ITextModel with a sessionId and connection,
  * allowing providers to route requests to the correct session.
  */
-import { monaco } from "../../../monaco/setup";
 import type { MessageConnection } from "vscode-jsonrpc/browser";
+import type * as MonacoTypes from "monaco-editor";
+import {
+    getInjectedMonaco,
+} from "../../../monaco/monacoContext";
 
 // ---------------------------------------------------------------------------
 // Model Registry — maps ITextModel → session context
@@ -20,14 +23,14 @@ interface ModelContext {
     connection: MessageConnection;
 }
 
-const modelRegistry = new Map<monaco.editor.ITextModel, ModelContext>();
+const modelRegistry = new Map<MonacoTypes.editor.ITextModel, ModelContext>();
 
 /**
  * Register a model with its session context.
  * Call this when a ConsoleInput editor is created.
  */
 export function registerModel(
-    model: monaco.editor.ITextModel,
+    model: MonacoTypes.editor.ITextModel,
     sessionId: string,
     connection: MessageConnection,
 ): void {
@@ -38,7 +41,7 @@ export function registerModel(
  * Update the connection for a model (e.g. when reconnecting).
  */
 export function updateModelConnection(
-    model: monaco.editor.ITextModel,
+    model: MonacoTypes.editor.ITextModel,
     connection: MessageConnection,
 ): void {
     const ctx = modelRegistry.get(model);
@@ -50,7 +53,7 @@ export function updateModelConnection(
 /**
  * Unregister a model when its editor is destroyed.
  */
-export function unregisterModel(model: monaco.editor.ITextModel): void {
+export function unregisterModel(model: MonacoTypes.editor.ITextModel): void {
     modelRegistry.delete(model);
 }
 
@@ -102,7 +105,7 @@ interface LspSignatureHelpResult {
 
 function formatDocumentation(
     doc?: string | { kind: string; value: string },
-): string | monaco.IMarkdownString | undefined {
+): string | MonacoTypes.IMarkdownString | undefined {
     if (!doc) return undefined;
     if (typeof doc === "string") return doc;
     if (doc.kind === "markdown") {
@@ -113,7 +116,9 @@ function formatDocumentation(
 
 function mapLspCompletionKind(
     kind?: number,
-): monaco.languages.CompletionItemKind {
+): MonacoTypes.languages.CompletionItemKind {
+    const monaco = getInjectedMonaco();
+
     switch (kind) {
         case 1:
             return monaco.languages.CompletionItemKind.Text;
@@ -164,7 +169,9 @@ function mapLspCompletionKind(
 
 function mapCompletionKind(
     kind?: string,
-): monaco.languages.CompletionItemKind {
+): MonacoTypes.languages.CompletionItemKind {
+    const monaco = getInjectedMonaco();
+
     switch (kind) {
         case "function":
             return monaco.languages.CompletionItemKind.Function;
@@ -188,9 +195,9 @@ function mapCompletionKind(
 }
 
 function getWordRangeAtPosition(
-    model: monaco.editor.ITextModel,
-    position: monaco.Position,
-): monaco.IRange {
+    model: MonacoTypes.editor.ITextModel,
+    position: MonacoTypes.Position,
+): MonacoTypes.IRange {
     const lineContent = model.getLineContent(position.lineNumber);
     const column = position.column - 1; // Convert to 0-based
 
@@ -236,12 +243,14 @@ export function ensureProviders(): void {
     }
     providersRegistered = true;
 
+    const monaco = getInjectedMonaco();
+
     // ---- Completion provider ----
     monaco.languages.registerCompletionItemProvider("r", {
         triggerCharacters: ["$", ":", "@", ".", "/"],
         provideCompletionItems: async (
-            model: monaco.editor.ITextModel,
-            position: monaco.Position,
+            model: MonacoTypes.editor.ITextModel,
+            position: MonacoTypes.Position,
         ) => {
             const ctx = modelRegistry.get(model);
             if (!ctx) {
@@ -266,7 +275,7 @@ export function ensureProviders(): void {
                 };
 
                 if (result.items && result.items.length > 0) {
-                    const suggestions: monaco.languages.CompletionItem[] =
+                    const suggestions: MonacoTypes.languages.CompletionItem[] =
                         result.items.map((item) => {
                             const insertText =
                                 item.insertText || item.label;
@@ -308,7 +317,7 @@ export function ensureProviders(): void {
                     { code, cursorPos: offset, sessionId },
                 )) as { items: CompletionItem[] };
 
-                const suggestions: monaco.languages.CompletionItem[] = (
+                const suggestions: MonacoTypes.languages.CompletionItem[] = (
                     kernelResult.items || []
                 ).map((item) => ({
                     label: item.label,
@@ -329,8 +338,8 @@ export function ensureProviders(): void {
     // ---- Hover provider ----
     monaco.languages.registerHoverProvider("r", {
         provideHover: async (
-            model: monaco.editor.ITextModel,
-            position: monaco.Position,
+            model: MonacoTypes.editor.ITextModel,
+            position: MonacoTypes.Position,
         ) => {
             const ctx = modelRegistry.get(model);
             if (!ctx) {
@@ -355,7 +364,7 @@ export function ensureProviders(): void {
                     return null;
                 }
 
-                const contents: monaco.IMarkdownString[] = [];
+                const contents: MonacoTypes.IMarkdownString[] = [];
                 if (typeof result.contents === "string") {
                     contents.push({ value: result.contents });
                 } else if (result.contents && "value" in result.contents) {
@@ -365,7 +374,7 @@ export function ensureProviders(): void {
                     });
                 }
 
-                let range: monaco.IRange | undefined;
+                let range: MonacoTypes.IRange | undefined;
                 if (result.range) {
                     range = {
                         startLineNumber: result.range.start.line + 1,
@@ -388,8 +397,8 @@ export function ensureProviders(): void {
         signatureHelpTriggerCharacters: ["(", ",", ")"],
         signatureHelpRetriggerCharacters: [",", ")"],
         provideSignatureHelp: async (
-            model: monaco.editor.ITextModel,
-            position: monaco.Position,
+            model: MonacoTypes.editor.ITextModel,
+            position: MonacoTypes.Position,
         ) => {
             const ctx = modelRegistry.get(model);
             if (!ctx) {
@@ -417,7 +426,7 @@ export function ensureProviders(): void {
                     return null;
                 }
 
-                const signatures: monaco.languages.SignatureInformation[] =
+                const signatures: MonacoTypes.languages.SignatureInformation[] =
                     result.signatures.map((sig) => ({
                         label: sig.label,
                         documentation: formatDocumentation(

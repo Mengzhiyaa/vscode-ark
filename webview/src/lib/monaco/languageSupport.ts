@@ -1,5 +1,6 @@
-import type { monaco } from "./setup";
 import type { MessageConnection } from "vscode-jsonrpc/browser";
+import type * as MonacoTypes from "monaco-editor";
+import type { MonacoApi } from "./monacoContext";
 
 export interface ConsoleThemeRule {
     token: string;
@@ -14,16 +15,17 @@ export interface ConsoleThemeData {
 }
 
 export interface LanguageMonacoSupportModule {
-    registerLanguage(): void;
-    ensureTokenizerReady(): Promise<void>;
-    ensureProviders?(): void;
+    registerLanguage(monaco: MonacoApi): void;
+    ensureTokenizerReady(monaco: MonacoApi): Promise<void>;
+    ensureProviders?(monaco: MonacoApi): void;
     registerModel?(
-        model: monaco.editor.ITextModel,
+        monaco: MonacoApi,
+        model: MonacoTypes.editor.ITextModel,
         sessionId: string,
         connection: MessageConnection,
     ): void;
-    unregisterModel?(model: monaco.editor.ITextModel): void;
-    getTextMateThemeRules?(): monaco.editor.ITokenThemeRule[];
+    unregisterModel?(monaco: MonacoApi, model: MonacoTypes.editor.ITextModel): void;
+    getTextMateThemeRules?(): MonacoTypes.editor.ITokenThemeRule[];
     updateTextMateThemeRules?(theme: ConsoleThemeData): void;
 }
 
@@ -31,6 +33,43 @@ const moduleCache = new Map<string, Promise<LanguageMonacoSupportModule | undefi
 
 function normalizeLanguageId(languageId: string): string {
     return languageId.trim().toLowerCase();
+}
+
+function isLanguageMonacoSupportModule(
+    value: unknown,
+): value is LanguageMonacoSupportModule {
+    return (
+        typeof value === "object" &&
+        value !== null &&
+        typeof (value as LanguageMonacoSupportModule).registerLanguage ===
+            "function" &&
+        typeof (value as LanguageMonacoSupportModule).ensureTokenizerReady ===
+            "function"
+    );
+}
+
+function normalizeLanguageMonacoSupportModule(
+    value: unknown,
+): LanguageMonacoSupportModule | undefined {
+    let candidate = value;
+
+    for (let depth = 0; depth < 3; depth += 1) {
+        if (isLanguageMonacoSupportModule(candidate)) {
+            return candidate;
+        }
+
+        if (
+            typeof candidate !== "object" ||
+            candidate === null ||
+            !("default" in candidate)
+        ) {
+            return undefined;
+        }
+
+        candidate = (candidate as { default?: unknown }).default;
+    }
+
+    return undefined;
 }
 
 export function getLanguageMonacoSupportModuleUrl(
@@ -63,9 +102,9 @@ export function loadLanguageMonacoSupportModule(
     }
 
     const loadPromise = (async () =>
-        await import(
-            /* @vite-ignore */ moduleUrl
-        ) as LanguageMonacoSupportModule)();
+        normalizeLanguageMonacoSupportModule(
+            await import(/* @vite-ignore */ moduleUrl),
+        ))();
 
     moduleCache.set(normalizedLanguageId, loadPromise);
     return loadPromise;

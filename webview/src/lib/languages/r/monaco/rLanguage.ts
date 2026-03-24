@@ -2,15 +2,14 @@
  * R Language Registration for Monaco Editor
  *
  * This module registers the R language with Monaco editor,
- * providing language configuration and TextMate grammar-based
- * syntax highlighting (replacing the old Monarch tokenizer).
+ * providing language configuration. TextMate tokenization is
+ * hosted by vscode-supervisor using grammar metadata registered
+ * by the language extension.
  */
-import { monaco } from "../../../monaco/setup";
-import { initializeTextMateTokenizer } from "./textmateTokenizer";
+import { getInjectedMonaco } from "../../../monaco/monacoContext";
 
 // Track if language has been registered
 let isRegistered = false;
-let tokenizerReadyPromise: Promise<void> | undefined;
 
 /**
  * Register the R language with Monaco.
@@ -20,6 +19,8 @@ export function registerRLanguage(): void {
     if (isRegistered) {
         return;
     }
+
+    const monaco = getInjectedMonaco();
 
     // Register the R language
     monaco.languages.register({
@@ -59,20 +60,13 @@ export function registerRLanguage(): void {
         wordPattern: /(-?\d*\.\d\w*)|([^`~!@#%^&*()\-=+[{\]}\\|;:'",.<>\/?\s]+)/g
     });
 
-    // Initialize TextMate grammar tokenizer (async, replaces Monarch)
-    // The tokenizer will register itself with Monaco when ready.
-    // Until it loads, Monaco will use basic mode (no highlighting).
-    tokenizerReadyPromise = initializeTextMateTokenizer().catch((error) => {
-        console.error("[rLanguage] TextMate tokenizer initialization failed:", error);
-    });
-
     isRegistered = true;
 }
 
 /**
- * Ensures R language registration and waits for tokenizer initialization.
+ * Ensures R language registration. Tokenizer initialization is
+ * handled by the supervisor-hosted TextMate runtime.
  */
 export async function ensureRLanguageTokenizerReady(): Promise<void> {
     registerRLanguage();
-    await tokenizerReadyPromise;
 }

@@ -44,14 +44,14 @@ const RUNTIME_SESSION_LOCATION = {
 
 function loadDefaultRIconBase64(
     context: vscode.ExtensionContext,
-    logChannel: vscode.LogOutputChannel
+    logChannel?: vscode.LogOutputChannel
 ): string | undefined {
     try {
         const iconPath = path.join(context.extensionPath, 'images', 'Rlogo.svg');
         const iconSvg = fs.readFileSync(iconPath, 'utf8');
         return Buffer.from(iconSvg, 'utf8').toString('base64');
     } catch (error) {
-        logChannel.debug(`Unable to load default R icon: ${error}`);
+        logChannel?.debug(`Unable to load default R icon: ${error}`);
         return undefined;
     }
 }
@@ -127,6 +127,37 @@ export class RLanguageRuntimeProvider implements ILanguageRuntimeProvider<RInsta
     readonly languageName = 'R';
     readonly lspFactory = new RLanguageLspFactory();
 
+    constructor(private readonly _extensionContext: vscode.ExtensionContext) {}
+
+    private _toRuntimeMetadata(
+        installation: RInstallation,
+        logChannel?: vscode.LogOutputChannel
+    ): LanguageRuntimeMetadata {
+        return {
+            runtimeId: createRuntimeId(installation.binpath, installation.version),
+            runtimeName: this.formatRuntimeName(installation),
+            runtimeShortName: installation.version,
+            runtimePath: installation.binpath,
+            runtimeVersion: '0.0.1',
+            runtimeSource: installation.source,
+            languageId: this.languageId,
+            languageName: this.languageName,
+            languageVersion: installation.version,
+            base64EncodedIconSvg: loadDefaultRIconBase64(this._extensionContext, logChannel),
+            startupBehavior: installation.current
+                ? RUNTIME_STARTUP_BEHAVIOR.Immediate
+                : RUNTIME_STARTUP_BEHAVIOR.Implicit,
+            sessionLocation: RUNTIME_SESSION_LOCATION.Workspace,
+            extraRuntimeData: {
+                homepath: installation.homepath,
+                binpath: installation.binpath,
+                arch: installation.arch,
+                condaEnvPath: installation.condaEnvPath,
+                envName: installation.envName,
+            },
+        };
+    }
+
     discoverInstallations(logChannel: vscode.LogOutputChannel): AsyncGenerator<RInstallation> {
         return rRuntimeDiscoverer(logChannel);
     }
@@ -162,46 +193,46 @@ export class RLanguageRuntimeProvider implements ILanguageRuntimeProvider<RInsta
     }
 
     createRuntimeMetadata(
-        context: vscode.ExtensionContext,
+        _context: vscode.ExtensionContext,
         installation: RInstallation,
         logChannel: vscode.LogOutputChannel
     ): LanguageRuntimeMetadata {
-        return {
-            runtimeId: createRuntimeId(installation.binpath, installation.version),
-            runtimeName: this.formatRuntimeName(installation),
-            runtimeShortName: installation.version,
-            runtimePath: installation.binpath,
-            runtimeVersion: '0.0.1',
-            runtimeSource: installation.source,
-            languageId: this.languageId,
-            languageName: this.languageName,
-            languageVersion: installation.version,
-            base64EncodedIconSvg: loadDefaultRIconBase64(context, logChannel),
-            startupBehavior: installation.current
-                ? RUNTIME_STARTUP_BEHAVIOR.Immediate
-                : RUNTIME_STARTUP_BEHAVIOR.Implicit,
-            sessionLocation: RUNTIME_SESSION_LOCATION.Workspace,
-            extraRuntimeData: {
-                homepath: installation.homepath,
-                binpath: installation.binpath,
-                arch: installation.arch,
-                condaEnvPath: installation.condaEnvPath,
-                envName: installation.envName,
-            },
-        };
+        return this._toRuntimeMetadata(installation, logChannel);
     }
 
     createKernelSpec(
-        context: vscode.ExtensionContext,
+        _context: vscode.ExtensionContext,
         installation: RInstallation,
         sessionMode: LanguageSessionMode,
         logChannel: vscode.LogOutputChannel
     ) {
-        return createJupyterKernelSpec(context, installation, sessionMode, logChannel);
+        return createJupyterKernelSpec(
+            this._extensionContext,
+            installation,
+            sessionMode,
+            logChannel,
+        );
     }
 
     restoreInstallationFromMetadata(metadata: LanguageRuntimeMetadata): RInstallation | undefined {
         return restoreRInstallationFromMetadata(metadata);
+    }
+
+    async validateMetadata(metadata: LanguageRuntimeMetadata): Promise<LanguageRuntimeMetadata> {
+        const installation = restoreRInstallationFromMetadata(metadata);
+        if (!installation) {
+            throw new Error('R metadata is missing installation information');
+        }
+
+        if (!fs.existsSync(installation.binpath)) {
+            throw new Error(`R binary does not exist: ${installation.binpath}`);
+        }
+
+        if (!fs.existsSync(installation.homepath)) {
+            throw new Error(`R home does not exist: ${installation.homepath}`);
+        }
+
+        return this._toRuntimeMetadata(installation);
     }
 
     async shouldRecommendForWorkspace(): Promise<boolean> {
@@ -227,13 +258,25 @@ export class RLanguageRuntimeProvider implements ILanguageRuntimeProvider<RInsta
 export class RBinaryProvider implements IBinaryProvider {
     readonly ownerId = R_LANGUAGE_ID;
 
+    constructor(private readonly _extensionContext: vscode.ExtensionContext) {}
+
     getBinaryDefinitions(): Readonly<Record<string, BinaryDefinition>> {
+        const version = this._extensionContext.extension.packageJSON?.positron?.binaryDependencies?.ark;
+        if (typeof version !== 'string' || !version) {
+            throw new Error('Missing positron.binaryDependencies.ark in vscode-ark package.json');
+        }
+
         return {
             ark: {
                 repo: 'posit-dev/ark',
+                version,
                 binaryName: process.platform === 'win32' ? 'ark.exe' : 'ark',
                 archivePattern: (version, platform) => `ark-${version}-${platform}.zip`,
-                installDir: 'resources/ark',
+                installDir: path.join(
+                    this._extensionContext.extensionPath,
+                    'resources',
+                    'ark',
+                ),
                 platformOverride: (platform) => platform.startsWith('darwin') ? 'darwin-universal' : platform,
             },
         };
@@ -241,10 +284,13 @@ export class RBinaryProvider implements IBinaryProvider {
 }
 
 export class RLanguageContribution implements ILanguageExtensionContribution {
-    readonly runtimeProvider = new RLanguageRuntimeProvider();
-    readonly binaryProvider = new RBinaryProvider();
+    readonly runtimeProvider: RLanguageRuntimeProvider;
+    readonly binaryProvider: RBinaryProvider;
 
-    constructor(private readonly _extensionContext: vscode.ExtensionContext) {}
+    constructor(private readonly _extensionContext: vscode.ExtensionContext) {
+        this.runtimeProvider = new RLanguageRuntimeProvider(_extensionContext);
+        this.binaryProvider = new RBinaryProvider(_extensionContext);
+    }
 
     registerContributions(
         services: ILanguageContributionServices,

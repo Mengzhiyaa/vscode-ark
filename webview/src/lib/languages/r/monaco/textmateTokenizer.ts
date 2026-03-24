@@ -20,7 +20,10 @@ import {
     type IRawGrammar,
     type StateStack,
 } from "vscode-textmate";
-import { monaco } from "../../../monaco/setup";
+import type * as MonacoTypes from "monaco-editor";
+import {
+    getInjectedMonaco,
+} from "../../../monaco/monacoContext";
 import type {
     ConsoleThemeData,
 } from "../../../monaco/languageSupport";
@@ -33,7 +36,7 @@ import onigWasmUrl from "vscode-oniguruma/release/onig.wasm?url";
 
 let initialized = false;
 let initPromise: Promise<void> | undefined;
-let currentThemeRules: monaco.editor.ITokenThemeRule[] = [];
+let currentThemeRules: MonacoTypes.editor.ITokenThemeRule[] = [];
 
 /**
  * Update TextMate theme rules for Monaco from extension-provided token colors.
@@ -47,7 +50,7 @@ export function updateTextMateThemeRules(theme: ConsoleThemeData): void {
     }));
 }
 
-export function getTextMateThemeRules(): monaco.editor.ITokenThemeRule[] {
+export function getTextMateThemeRules(): MonacoTypes.editor.ITokenThemeRule[] {
     return currentThemeRules;
 }
 
@@ -166,19 +169,21 @@ async function doInitialize(): Promise<void> {
  * This replaces the Monarch tokenizer for the 'r' language.
  */
 function registerTextMateTokensProvider(grammar: IGrammar): void {
+    const monaco = getInjectedMonaco();
+
     monaco.languages.setTokensProvider("r", {
-        getInitialState(): monaco.languages.IState {
+        getInitialState(): MonacoTypes.languages.IState {
             return new TextMateState(INITIAL);
         },
 
         tokenize(
             line: string,
-            state: monaco.languages.IState,
-        ): monaco.languages.ILineTokens {
+            state: MonacoTypes.languages.IState,
+        ): MonacoTypes.languages.ILineTokens {
             const tmState = state as TextMateState;
             const result = grammar.tokenizeLine(line, tmState.ruleStack);
 
-            const tokens: monaco.languages.IToken[] = result.tokens.map(
+            const tokens: MonacoTypes.languages.IToken[] = result.tokens.map(
                 (token) => ({
                     startIndex: token.startIndex,
                     // Convert TextMate scope list to a dotted Monaco token string.
@@ -219,14 +224,14 @@ function scopesToMonacoToken(scopes: string[]): string {
 /**
  * Adapter class that wraps TextMate's StateStack as a Monaco IState.
  */
-class TextMateState implements monaco.languages.IState {
+class TextMateState implements MonacoTypes.languages.IState {
     constructor(public readonly ruleStack: StateStack) { }
 
     clone(): TextMateState {
         return new TextMateState(this.ruleStack.clone());
     }
 
-    equals(other: monaco.languages.IState): boolean {
+    equals(other: MonacoTypes.languages.IState): boolean {
         if (!(other instanceof TextMateState)) return false;
         return this.ruleStack.equals(other.ruleStack);
     }

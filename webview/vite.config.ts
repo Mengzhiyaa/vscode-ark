@@ -9,6 +9,7 @@ export default defineConfig(({ mode }) => ({
         sourcemap: mode === 'development',
         assetsInlineLimit: 4096,
         rollupOptions: {
+            preserveEntrySignatures: 'exports-only',
             input: {
                 rMonacoSupport: resolve(__dirname, 'src/lib/languages/r/rMonacoSupport.ts'),
             },

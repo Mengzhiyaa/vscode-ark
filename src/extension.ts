@@ -19,6 +19,7 @@ export async function activate(_context: vscode.ExtensionContext): Promise<void>
         webviewAssets: {
             localResourceRoots: [
                 vscode.Uri.joinPath(_context.extensionUri, 'webview', 'dist'),
+                vscode.Uri.joinPath(_context.extensionUri, 'syntaxes'),
             ],
             monacoSupportModule: vscode.Uri.joinPath(
                 _context.extensionUri,
@@ -27,6 +28,14 @@ export async function activate(_context: vscode.ExtensionContext): Promise<void>
                 'rMonacoSupport',
                 'index.js',
             ),
+            textMateGrammar: {
+                scopeName: 'source.r',
+                grammarUri: vscode.Uri.joinPath(
+                    _context.extensionUri,
+                    'syntaxes',
+                    'r.tmGrammar.gen.json',
+                ),
+            },
         },
     });
 }

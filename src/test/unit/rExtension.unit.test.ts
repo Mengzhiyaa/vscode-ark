@@ -60,6 +60,10 @@ suite('[Unit] Split R extension entry', () => {
             webviewAssets?: {
                 localResourceRoots?: readonly vscode.Uri[];
                 monacoSupportModule?: vscode.Uri;
+                textMateGrammar?: {
+                    scopeName?: string;
+                    grammarUri?: vscode.Uri;
+                };
             };
         };
 
@@ -71,11 +75,21 @@ suite('[Unit] Split R extension entry', () => {
                 '/webview/dist/rMonacoSupport/index.js'
             )
         );
+        assert.strictEqual(
+            registration.webviewAssets?.textMateGrammar?.scopeName,
+            'source.r'
+        );
+        assert.ok(
+            registration.webviewAssets?.textMateGrammar?.grammarUri?.path.endsWith(
+                '/syntaxes/r.tmGrammar.gen.json'
+            )
+        );
         assert.deepStrictEqual(
             registration.webviewAssets?.localResourceRoots?.map((uri) =>
-                uri.path.endsWith('/webview/dist')
+                uri.path.endsWith('/webview/dist') ||
+                uri.path.endsWith('/syntaxes')
             ),
-            [true]
+            [true, true]
         );
     });
 });
