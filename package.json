@@ -45,8 +45,8 @@
   "main": "./dist/extension.js",
   "scripts": {
     "vscode:prepublish": "npm run build",
-    "compile": "webpack",
-    "watch": "webpack --watch",
+    "compile": "node esbuild.mjs --production",
+    "watch": "node esbuild.mjs --watch",
     "compile-tests": "node -e \"require('fs').rmSync('out', { recursive: true, force: true })\" && tsc -p . --outDir out",
     "install:binaries": "node scripts/install-binaries.mjs",
     "build:webview": "npm --prefix webview run build",
@@ -305,14 +305,11 @@
     "@vscode/test-cli": "^0.0.12",
     "@vscode/test-electron": "^2.5.2",
     "@vscode/vsce": "^3.7.1",
-    "copy-webpack-plugin": "^14.0.0",
+    "esbuild": "^0.25.0",
     "eslint": "^10.1.0",
     "ovsx": "^0.10.9",
-    "ts-loader": "^9.5.4",
     "tsx": "^4.21.0",
     "typescript": "^5.9.3",
-    "typescript-eslint": "^8.57.1",
-    "webpack": "^5.105.4",
-    "webpack-cli": "^7.0.2"
+    "typescript-eslint": "^8.57.1"
   }
 }

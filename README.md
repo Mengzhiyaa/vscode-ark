@@ -7,7 +7,7 @@ Standalone R language extension for VS Code, built on top of the local
 
 - Install dependencies with `npm install`.
 - Sync the supervisor public API types with `npm run sync:supervisor-api -- ../vscode-supervisor`.
-- Build the `rMonacoSupport` module with `npm run build:webview`.
+- Build the R Monaco support bundle with `npm run build:webview`.
 - Build the extension bundle with `npm run build`.
 - Compile the test bundle with `npm run compile-tests`.
 - Run the extension unit suite with `npm run test:unit:ext`.
@@ -19,9 +19,9 @@ assets, and bundled `ark` runtime resources. During local test runs it loads
 is present; otherwise the test runner falls back to the declared extension
 dependency flow.
 
-`webview/` is source-owned in this repo for the Monaco support module, so
-`webview/dist/rMonacoSupport` can be rebuilt locally instead of copied from the
-parent workspace.
+`webview/` now contains only the R-specific Monaco support bundle that
+`vscode-supervisor` loads into its console and data explorer webviews. Running
+`npm run build:webview` rebuilds `webview/dist/rMonacoSupport` locally.
 
 ## CI And Release
 
