@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import type {
     IDiscoveredLanguageRuntime,
     IRuntimeManager,
+    IRuntimeStartupService,
     ILanguageRuntimeProvider,
     LanguageRuntimeMetadata,
 } from './types/supervisor-api';
@@ -25,6 +26,7 @@ export class RRuntimeStartupManager implements vscode.Disposable, IRuntimeManage
         private readonly _extensionContext: vscode.ExtensionContext,
         private readonly _runtimeProvider: ILanguageRuntimeProvider<RInstallation>,
         private readonly _runtimeManager: IRuntimeManager,
+        private readonly _runtimeStartupService: IRuntimeStartupService,
         private readonly _logChannel: vscode.LogOutputChannel,
     ) {}
 
@@ -36,6 +38,7 @@ export class RRuntimeStartupManager implements vscode.Disposable, IRuntimeManage
         this._discoverAllRuntimesPromise = this._doDiscoverAllRuntimes(disabledLanguageIds)
             .finally(() => {
                 this._discoverAllRuntimesPromise = undefined;
+                this._runtimeStartupService.completeDiscovery(this.id);
                 this._onDidFinishDiscoveryEmitter.fire();
             });
         return this._discoverAllRuntimesPromise;

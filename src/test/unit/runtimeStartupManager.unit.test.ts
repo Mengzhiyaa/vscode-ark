@@ -4,6 +4,7 @@ import * as vscode from 'vscode';
 import type {
     ILanguageRuntimeProvider,
     IRuntimeManager,
+    IRuntimeStartupService,
     JupyterKernelSpec,
     LanguageRuntimeMetadata,
 } from '../../types/supervisor-api';
@@ -128,11 +129,18 @@ suite('[Unit] RRuntimeStartupManager', () => {
                 return true;
             },
         } as unknown as IRuntimeManager;
+        const completeDiscoveryCalls: number[] = [];
+        const runtimeStartupService = {
+            completeDiscovery: (id: number) => {
+                completeDiscoveryCalls.push(id);
+            },
+        } as unknown as IRuntimeStartupService;
 
         const manager = new RRuntimeStartupManager(
             makeContext(),
             makeRuntimeProvider(installations),
             sharedRuntimeManager,
+            runtimeStartupService,
             makeLogChannel(),
         );
 
@@ -160,6 +168,7 @@ suite('[Unit] RRuntimeStartupManager', () => {
             installations.map((installation) => installation.binpath),
         );
         assert.strictEqual(finishCount, 1);
+        assert.deepStrictEqual(completeDiscoveryCalls, [manager.id]);
 
         manager.dispose();
     });
@@ -177,11 +186,15 @@ suite('[Unit] RRuntimeStartupManager', () => {
                 return true;
             },
         } as unknown as IRuntimeManager;
+        const runtimeStartupService = {
+            completeDiscovery: () => undefined,
+        } as unknown as IRuntimeStartupService;
 
         const manager = new RRuntimeStartupManager(
             makeContext(),
             makeRuntimeProvider([installation], installation),
             sharedRuntimeManager,
+            runtimeStartupService,
             makeLogChannel(),
         );
 

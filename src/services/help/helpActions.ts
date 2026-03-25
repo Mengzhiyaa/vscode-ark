@@ -38,7 +38,7 @@ export function registerHelpActions(
                 return;
             }
 
-            const session = runtimeSessionService.activeSession;
+            const session = runtimeSessionService.getConsoleSessionForLanguage(languageId);
             if (!session || session.runtimeMetadata.languageId !== languageId) {
                 vscode.window.showInformationMessage(`No active ${languageName} session. Start a session to view help.`);
                 return;
@@ -81,7 +81,7 @@ export function registerHelpActions(
 
     disposables.push(
         vscode.commands.registerCommand(RCommandIds.helpLookupHelpTopic, async () => {
-            const session = runtimeSessionService.activeSession;
+            const session = runtimeSessionService.getConsoleSessionForLanguage(languageId);
             if (!session || session.runtimeMetadata.languageId !== languageId) {
                 vscode.window.showInformationMessage(`No active ${languageName} session. Start a session to view help.`);
                 return;

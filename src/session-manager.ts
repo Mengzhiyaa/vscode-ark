@@ -198,6 +198,19 @@ export class RSessionManager implements vscode.Disposable {
     }
 
     async getConsoleSession(): Promise<RSession | undefined> {
+        const lastForegroundSessionId = this.getLastForegroundSessionId();
+        if (lastForegroundSessionId) {
+            const foregroundSession = this._sessions.get(lastForegroundSessionId);
+            if (
+                foregroundSession &&
+                foregroundSession.metadata.sessionMode === SESSION_MODE_CONSOLE &&
+                foregroundSession.state !== RUNTIME_STATE_UNINITIALIZED &&
+                foregroundSession.state !== RUNTIME_STATE_EXITED
+            ) {
+                return foregroundSession;
+            }
+        }
+
         const sessions = this.getActiveRSessions().sort((left, right) => right.created - left.created);
         const consoleSessions = sessions.filter((session) => {
             return session.metadata.sessionMode === SESSION_MODE_CONSOLE &&

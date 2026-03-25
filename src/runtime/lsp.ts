@@ -3,6 +3,7 @@
  *  Based on positron-r/src/lsp.ts
  *--------------------------------------------------------------------------------------------*/
 
+import * as path from 'path';
 import * as vscode from 'vscode';
 import { Socket } from 'net';
 import type {
@@ -62,7 +63,7 @@ function timeout(ms: number, message: string): Promise<never> {
  */
 export const R_DOCUMENT_SELECTORS: DocumentSelector = [
     { language: 'r', scheme: 'untitled' },
-    { language: 'r', scheme: 'inmemory' },  // Console
+    { language: 'r', scheme: 'inmemory' }, // Console
     { language: 'r', scheme: 'assistant-code-confirmation-widget' },
     { language: 'r', pattern: '**/*.{r,R}' },
     { language: 'r', pattern: '**/*.{rprofile,Rprofile}' },
@@ -70,12 +71,80 @@ export const R_DOCUMENT_SELECTORS: DocumentSelector = [
     { language: 'r', pattern: '**/*.rhistory' },
 ];
 
+// Regex to match Quarto virtual document files: .vdoc.[uuid].[ext]
+export const VDOC_PATTERN = /^\.vdoc\.[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.\w+$/i;
+
+// Selector for Quarto virtual documents.
+export const VDOC_SELECTOR = { language: 'r', pattern: '**/.vdoc.*.{r,R}' };
+
+// Regex to match notebook console REPL URIs: /notebook-repl-<lang>-<uuid>
+export const NOTEBOOK_REPL_PATTERN = /^\/notebook-repl-/;
+
+export function getDocumentSelectorForSession(notebookUri?: vscode.Uri): DocumentSelector {
+    if (!notebookUri) {
+        return R_DOCUMENT_SELECTORS;
+    }
+
+    return [
+        { language: 'r', pattern: notebookUri.fsPath },
+        VDOC_SELECTOR,
+        { language: 'r', scheme: 'inmemory' },
+    ];
+}
+
+export function shouldHandleLspDiagnostics(uri: vscode.Uri): boolean {
+    if (uri.scheme === 'assistant-code-confirmation-widget') {
+        return false;
+    }
+
+    if (uri.scheme === 'file') {
+        const baseName = path.basename(uri.fsPath);
+        if (VDOC_PATTERN.test(baseName)) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+export function shouldProvideCompletionForDocument(
+    documentUri: vscode.Uri,
+    notebookUri?: vscode.Uri,
+): boolean {
+    if (!notebookUri) {
+        if (documentUri.scheme === 'file') {
+            const baseName = path.basename(documentUri.fsPath);
+            if (VDOC_PATTERN.test(baseName)) {
+                return false;
+            }
+        }
+
+        if (
+            documentUri.scheme === 'inmemory' &&
+            NOTEBOOK_REPL_PATTERN.test(documentUri.path)
+        ) {
+            return false;
+        }
+
+        return true;
+    }
+
+    if (
+        documentUri.scheme === 'inmemory' &&
+        !NOTEBOOK_REPL_PATTERN.test(documentUri.path)
+    ) {
+        return false;
+    }
+
+    return true;
+}
+
 /**
  * Global output channel for R LSP sessions
  *
  * Foreground switches can briefly overlap while services are handed off between
- * sessions, and the start of each session is logged with a session ID, so
- * we use a single output channel for all LSP sessions.
+ * sessions, and the start of each session is logged with a session ID, so we
+ * use a single output channel for all LSP sessions.
  */
 let _lspOutputChannel: vscode.OutputChannel | undefined;
 function getLspOutputChannel(): vscode.OutputChannel {
@@ -117,7 +186,9 @@ export class RLanguageLsp implements ILanguageLsp {
         private readonly _dynState: LanguageRuntimeDynState,
         logChannel: vscode.LogOutputChannel,
     ) {
-        this.languageClientName = `R language client (${this._version}) for session ${_dynState.sessionName} - '${_metadata.sessionId}'`;
+        this.languageClientName =
+            `R language client (${this._version}) for session ` +
+            `${_dynState.sessionName} - '${_metadata.sessionId}'`;
         this._logChannel = logChannel;
     }
 
@@ -144,6 +215,13 @@ export class RLanguageLsp implements ILanguageLsp {
         this._stateEmitter.fire({ oldState: old, newState: state });
     }
 
+    private createRequestTextDocumentUri(): string {
+        const requestPath = this._metadata.notebookUri
+            ? `/notebook-repl-r-${this._metadata.sessionId}/input-${Date.now()}.R`
+            : `/console/input-${Date.now()}.R`;
+        return vscode.Uri.from({ scheme: 'inmemory', path: requestPath }).toString();
+    }
+
     /**
      * Activate the language server; returns a promise that resolves when the LSP is
      * activated.
@@ -151,22 +229,18 @@ export class RLanguageLsp implements ILanguageLsp {
      * @param port The port on which the language server is listening.
      */
     public async activate(port: number): Promise<void> {
-
-        // Clean up disposables from any previous activation
-        this.activationDisposables.forEach(d => d.dispose());
+        this.activationDisposables.forEach(disposable => disposable.dispose());
         this.activationDisposables = [];
 
-        // Define server options for the language server. Connects to `port`.
         const serverOptions = async (): Promise<StreamInfo> => {
             const out = new PromiseHandles<StreamInfo>();
             const socket = new Socket();
 
             socket.on('ready', () => {
-                const streams: StreamInfo = {
+                out.resolve({
                     reader: socket,
-                    writer: socket
-                };
-                out.resolve(streams);
+                    writer: socket,
+                });
             });
             socket.on('error', (error) => {
                 out.reject(error);
@@ -176,29 +250,42 @@ export class RLanguageLsp implements ILanguageLsp {
             return out.promise;
         };
 
+        const { notebookUri } = this._metadata;
+
         const clientOptions: LanguageClientOptions = {
-            // Main client for R language - includes untitled, inmemory, and file R documents
-            documentSelector: R_DOCUMENT_SELECTORS,
-            synchronize: {
-                fileEvents: vscode.workspace.createFileSystemWatcher('**/*.R')
-            },
+            documentSelector: getDocumentSelectorForSession(notebookUri),
+            synchronize: notebookUri
+                ? undefined
+                : {
+                    fileEvents: vscode.workspace.createFileSystemWatcher('**/*.R'),
+                },
             outputChannel: getLspOutputChannel(),
             revealOutputChannelOn: RevealOutputChannelOn.Never,
-            // Custom error handler to prevent auto-restart and toast notifications
             errorHandler: new RErrorHandler(this._version, port, this._logChannel),
             middleware: {
                 handleDiagnostics(uri, diagnostics, next) {
-                    // Disable diagnostics for certain schemes if needed
-                    // (following positron-r pattern)
+                    if (!shouldHandleLspDiagnostics(uri)) {
+                        return undefined;
+                    }
+
                     return next(uri, diagnostics);
                 },
-            }
+                provideCompletionItem(document, position, context, token, next) {
+                    if (!shouldProvideCompletionForDocument(document.uri, notebookUri)) {
+                        return undefined;
+                    }
+
+                    return next(document, position, context, token);
+                },
+            },
         };
 
         // With a `.` rather than a `-` so vscode-languageserver can look up related options correctly
-        const id = 'supervisor.r';
+        const id = 'positron.r';
 
-        const message = `Creating language client ${this._dynState.sessionName} for session ${this._metadata.sessionId} on port ${port}`;
+        const message =
+            `Creating language client ${this._dynState.sessionName} ` +
+            `for session ${this._metadata.sessionId} on port ${port}`;
 
         this.log(message);
         getLspOutputChannel().appendLine(message);
@@ -208,17 +295,19 @@ export class RLanguageLsp implements ILanguageLsp {
         const out = new PromiseHandles<void>();
         this._initializing = out.promise;
 
-        this.activationDisposables.push(this.client.onDidChangeState(event => {
+        this.activationDisposables.push(this.client.onDidChangeState((event) => {
             const oldState = this._state;
-            // Convert the state to our own enum
             switch (event.newState) {
                 case State.Starting:
                     this.setState(LANGUAGE_LSP_STATE.Starting);
                     break;
                 case State.Running:
                     if (this._initializing) {
-                        this.log(`${this.languageClientName} init successful`);
+                        this.log(`${this.languageClientName} init successful`, vscode.LogLevel.Debug);
                         this._initializing = undefined;
+                        if (this.client) {
+                            this.registerPositronLspExtensions(this.client);
+                        }
                         out.resolve();
                     }
                     this.setState(LANGUAGE_LSP_STATE.Running);
@@ -231,45 +320,42 @@ export class RLanguageLsp implements ILanguageLsp {
                     this.setState(LANGUAGE_LSP_STATE.Stopped);
                     break;
             }
-            this.log(`${this.languageClientName} state changed ${oldState} => ${this._state}`, vscode.LogLevel.Debug);
+
+            this.log(
+                `${this.languageClientName} state changed ${oldState} => ${this._state}`,
+                vscode.LogLevel.Debug,
+            );
         }));
 
         this.client.start();
         await out.promise;
-
-        // Register Positron LSP extensions after client is running
-        this.registerPositronLspExtensions(this.client);
     }
 
     /**
-     * Register Positron-specific LSP extensions after the client is running.
-     * 
-     * This registers:
-     * - VirtualDocumentProvider for ark:// URIs
-     * - RStatementRangeProvider for statement range detection
-     * - RHelpTopicProvider for help topic lookup
+     * Registers additional Positron-specific LSP methods. These programmatic
+     * language features are not part of the LSP specification, and are
+     * consequently not covered by vscode-languageserver, but are used by
+     * Positron to provide additional functionality.
+     *
+     * In Supervisor, editor-facing callers explicitly choose the correct
+     * session and then access the providers from that session.
+     *
+     * @param client The language client instance
      */
     private registerPositronLspExtensions(client: LanguageClient): void {
         this.log('Registering Positron LSP extensions', vscode.LogLevel.Debug);
 
-        // 1. Virtual Document Provider (ark:// scheme)
         this._virtualDocumentProvider = new VirtualDocumentProvider(client, this._logChannel);
         const vdocDisposable = vscode.workspace.registerTextDocumentContentProvider(
             'ark',
-            this._virtualDocumentProvider
+            this._virtualDocumentProvider,
         );
         this.activationDisposables.push(vdocDisposable);
         this.log('Registered VirtualDocumentProvider for ark:// URIs', vscode.LogLevel.Debug);
 
-        // 2. Statement Range Provider
-        // Note: In standard VS Code, there's no positron.languages.registerStatementRangeProvider
-        // so we just create the provider and expose it via getter for direct usage
         this._statementRangeProvider = new RStatementRangeProvider(client);
         this.log('Registered RStatementRangeProvider', vscode.LogLevel.Debug);
 
-        // 3. Help Topic Provider  
-        // Note: In standard VS Code, there's no positron.languages.registerHelpTopicProvider
-        // so we just create the provider and expose it via getter for direct usage
         this._helpTopicProvider = new RHelpTopicProvider(client);
         this.log('Registered RHelpTopicProvider', vscode.LogLevel.Debug);
     }
@@ -297,27 +383,17 @@ export class RLanguageLsp implements ILanguageLsp {
      */
     public async deactivate() {
         if (!this.client) {
-            // No client to stop, so just resolve
             return;
         }
 
-        // If we don't need to stop the client, just resolve
         if (!this.client.needsStop()) {
             return;
         }
 
         this.log(`${this.languageClientName} is stopping`, vscode.LogLevel.Debug);
 
-        // First wait for initialization to complete.
-        // `stop()` should not be called on a
-        // partially initialized client.
         await this._initializing;
 
-        // Ideally we'd just wait for `this._client!.stop()`. In practice, the
-        // promise returned by `stop()` never resolves if the server side is
-        // disconnected, so rather than awaiting it when the runtime has exited,
-        // we wait for the client to change state to `stopped`, which does
-        // happen reliably.
         const stopped = new Promise<void>((resolve) => {
             const disposable = this.client!.onDidChangeState((event) => {
                 if (event.newState === State.Stopped) {
@@ -328,9 +404,8 @@ export class RLanguageLsp implements ILanguageLsp {
             });
         });
 
-        this.client!.stop();
+        this.client.stop();
 
-        // Don't wait more than a couple of seconds for the client to stop
         await Promise.race([stopped, timeout(2000, 'waiting for client to stop')]);
     }
 
@@ -349,34 +424,35 @@ export class RLanguageLsp implements ILanguageLsp {
      */
     async wait(): Promise<boolean> {
         switch (this.state) {
-            case LANGUAGE_LSP_STATE.Running: return true;
-            case LANGUAGE_LSP_STATE.Stopped: return false;
-
-            case LANGUAGE_LSP_STATE.Starting: {
-                // Inherit init promise. This can reject if init fails.
+            case LANGUAGE_LSP_STATE.Running:
+                return true;
+            case LANGUAGE_LSP_STATE.Stopped:
+                return false;
+            case LANGUAGE_LSP_STATE.Starting:
                 await this._initializing;
                 return true;
-            }
-
             case LANGUAGE_LSP_STATE.Uninitialized: {
                 const handles = new PromiseHandles<boolean>();
 
-                const cleanup = this.onDidChangeState(_state => {
+                const cleanup = this.onDidChangeState(() => {
                     let out: boolean | undefined;
                     switch (this.state) {
-                        case LANGUAGE_LSP_STATE.Running: out = true; break;
-                        case LANGUAGE_LSP_STATE.Stopped: out = false; break;
-                        case LANGUAGE_LSP_STATE.Uninitialized: return;
-                        case LANGUAGE_LSP_STATE.Starting: {
-                            // Inherit init promise
+                        case LANGUAGE_LSP_STATE.Running:
+                            out = true;
+                            break;
+                        case LANGUAGE_LSP_STATE.Stopped:
+                            out = false;
+                            break;
+                        case LANGUAGE_LSP_STATE.Uninitialized:
+                            return;
+                        case LANGUAGE_LSP_STATE.Starting:
                             if (this._initializing) {
                                 cleanup.dispose();
-                                this._initializing.
-                                    then(() => handles.resolve(true)).
-                                    catch((err) => handles.reject(err));
+                                this._initializing
+                                    .then(() => handles.resolve(true))
+                                    .catch((err) => handles.reject(err));
                             }
                             return;
-                        }
                     }
 
                     if (out === undefined) {
@@ -398,7 +474,7 @@ export class RLanguageLsp implements ILanguageLsp {
      * Dispose of the client instance.
      */
     async dispose() {
-        this.activationDisposables.forEach(d => d.dispose());
+        this.activationDisposables.forEach(disposable => disposable.dispose());
         await this.deactivate();
     }
 
@@ -413,14 +489,14 @@ export class RLanguageLsp implements ILanguageLsp {
     /**
      * Request code completion at a position in a virtual document.
      * Used by the console to get LSP-based completions.
-     * 
+     *
      * @param code The code content
      * @param position 0-based line and character position
      * @returns Array of LSP completion items
      */
     async requestCompletion(
         code: string,
-        position: { line: number; character: number }
+        position: { line: number; character: number },
     ): Promise<any[]> {
         if (!this.client || this._state !== LANGUAGE_LSP_STATE.Running) {
             this.log('LSP not ready for completion request', vscode.LogLevel.Debug);
@@ -428,36 +504,33 @@ export class RLanguageLsp implements ILanguageLsp {
         }
 
         try {
-            // Create a virtual document URI for the console input
-            const uri = `inmemory://console/input-${Date.now()}.R`;
-
-            // Send didOpen for the virtual document
+            const uri = this.createRequestTextDocumentUri();
             const textDocument = {
                 uri,
                 languageId: 'r',
                 version: 1,
-                text: code
+                text: code,
             };
 
             this.client.sendNotification('textDocument/didOpen', { textDocument });
 
-            // Request completion
             const result = await this.client.sendRequest('textDocument/completion', {
                 textDocument: { uri },
-                position
+                position,
             });
 
-            // Send didClose to clean up
             this.client.sendNotification('textDocument/didClose', {
-                textDocument: { uri }
+                textDocument: { uri },
             });
 
-            // Handle both CompletionList and CompletionItem[] responses
             if (Array.isArray(result)) {
                 return result;
-            } else if (result && typeof result === 'object' && 'items' in result) {
+            }
+
+            if (result && typeof result === 'object' && 'items' in result) {
                 return (result as any).items || [];
             }
+
             return [];
         } catch (error) {
             this.log(`Completion request failed: ${error}`, vscode.LogLevel.Error);
@@ -468,14 +541,14 @@ export class RLanguageLsp implements ILanguageLsp {
     /**
      * Request hover information at a position in a virtual document.
      * Used by the console to get LSP-based hover documentation.
-     * 
+     *
      * @param code The code content
      * @param position 0-based line and character position
      * @returns Hover information or null
      */
     async requestHover(
         code: string,
-        position: { line: number; character: number }
+        position: { line: number; character: number },
     ): Promise<any | null> {
         if (!this.client || this._state !== LANGUAGE_LSP_STATE.Running) {
             this.log('LSP not ready for hover request', vscode.LogLevel.Debug);
@@ -483,24 +556,23 @@ export class RLanguageLsp implements ILanguageLsp {
         }
 
         try {
-            const uri = `inmemory://console/input-${Date.now()}.R`;
-
+            const uri = this.createRequestTextDocumentUri();
             const textDocument = {
                 uri,
                 languageId: 'r',
                 version: 1,
-                text: code
+                text: code,
             };
 
             this.client.sendNotification('textDocument/didOpen', { textDocument });
 
             const result = await this.client.sendRequest('textDocument/hover', {
                 textDocument: { uri },
-                position
+                position,
             });
 
             this.client.sendNotification('textDocument/didClose', {
-                textDocument: { uri }
+                textDocument: { uri },
             });
 
             return result;
@@ -513,14 +585,14 @@ export class RLanguageLsp implements ILanguageLsp {
     /**
      * Request signature help at a position in a virtual document.
      * Used by the console to get LSP-based function signature information.
-     * 
+     *
      * @param code The code content
      * @param position 0-based line and character position
      * @returns Signature help information or null
      */
     async requestSignatureHelp(
         code: string,
-        position: { line: number; character: number }
+        position: { line: number; character: number },
     ): Promise<any | null> {
         if (!this.client || this._state !== LANGUAGE_LSP_STATE.Running) {
             this.log('LSP not ready for signature help request', vscode.LogLevel.Debug);
@@ -528,24 +600,23 @@ export class RLanguageLsp implements ILanguageLsp {
         }
 
         try {
-            const uri = `inmemory://console/input-${Date.now()}.R`;
-
+            const uri = this.createRequestTextDocumentUri();
             const textDocument = {
                 uri,
                 languageId: 'r',
                 version: 1,
-                text: code
+                text: code,
             };
 
             this.client.sendNotification('textDocument/didOpen', { textDocument });
 
             const result = await this.client.sendRequest('textDocument/signatureHelp', {
                 textDocument: { uri },
-                position
+                position,
             });
 
             this.client.sendNotification('textDocument/didClose', {
-                textDocument: { uri }
+                textDocument: { uri },
             });
 
             return result;
@@ -555,4 +626,3 @@ export class RLanguageLsp implements ILanguageLsp {
         }
     }
 }
-
