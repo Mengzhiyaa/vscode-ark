@@ -147,7 +147,7 @@
     ],
     "keybindings": [
       {
-        "command": "supervisor.runCurrentStatement",
+        "command": "supervisor.console.executeCode",
         "key": "ctrl+enter",
         "mac": "cmd+enter",
         "when": "editorTextFocus && editorLangId == r"

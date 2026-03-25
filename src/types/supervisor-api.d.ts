@@ -1,8 +1,11 @@
 import * as vscode from 'vscode';
 import type { LanguageRuntimeExit } from './internal/runtimeTypes';
+import type { IPositronNewFolderService } from './newFolder/positronNewFolder';
 import { RuntimeExitReason, RuntimeStartMode, RuntimeState } from './internal/runtimeTypes';
 export type { LanguageRuntimeExit } from './internal/runtimeTypes';
 export { RuntimeExitReason, RuntimeStartMode, RuntimeState } from './internal/runtimeTypes';
+export { NewFolderStartupPhase } from './newFolder/positronNewFolder';
+export type { NewFolderConfiguration, IPositronNewFolderService, IPositronNewFolderTaskOptions, } from './newFolder/positronNewFolder';
 export declare enum LanguageRuntimeSessionMode {
     Console = "console",
     Notebook = "notebook",
@@ -272,7 +275,7 @@ export interface IRuntimeSessionService {
     getSession(sessionId: string): ILanguageRuntimeSession | undefined;
     getActiveSession(sessionId: string): ActiveRuntimeSession | undefined;
     getActiveSessions(): ActiveRuntimeSession[];
-    getConsoleSessionForRuntime(runtimeId: string): ILanguageRuntimeSession | undefined;
+    getConsoleSessionForRuntime(runtimeId: string, includeExited?: boolean): ILanguageRuntimeSession | undefined;
     getConsoleSessionForLanguage(languageId: string): ILanguageRuntimeSession | undefined;
     getNotebookSessionForNotebookUri(notebookUri: vscode.Uri): ILanguageRuntimeSession | undefined;
     startNewRuntimeSession(runtimeId: string, sessionName: string, sessionMode: LanguageRuntimeSessionMode, notebookUri: vscode.Uri | undefined, source: string, startMode: RuntimeStartMode, activate: boolean): Promise<string>;
@@ -291,7 +294,9 @@ export interface IRuntimeSessionService {
 }
 export interface IPositronConsoleService {
     readonly onDidChangeConsoleWidth: vscode.Event<number>;
-    showConsole(): void;
+    revealConsole(preserveFocus?: boolean): Promise<void>;
+    focusConsole(): Promise<void>;
+    showConsole(): Promise<void>;
     getConsoleWidth(): number;
     executeCode(languageId: string, sessionId: string | undefined, code: string, attribution: ICodeExecutionAttribution, focus: boolean): Promise<string>;
 }
@@ -354,6 +359,7 @@ export interface ILanguageContributionServices {
     readonly logChannel: vscode.LogOutputChannel;
     readonly runtimeSessionService: IRuntimeSessionService;
     readonly runtimeStartupService: IRuntimeStartupService;
+    readonly positronNewFolderService: IPositronNewFolderService;
     readonly runtimeManager: IRuntimeManager;
     readonly positronConsoleService: IPositronConsoleService;
     readonly positronHelpService: IPositronHelpService;
@@ -383,6 +389,7 @@ export interface ILanguageRuntimeRegistration<TInstallation = unknown> {
 export interface ISupervisorFrameworkApi {
     readonly runtimeSessionService: IRuntimeSessionService;
     readonly runtimeStartupService: IRuntimeStartupService;
+    readonly positronNewFolderService: IPositronNewFolderService;
     readonly version: string;
     startRuntime(metadata: LanguageRuntimeMetadata, source: string, activate: boolean): Promise<string>;
     createSession(runtimeMetadata: LanguageRuntimeMetadata, sessionMetadata: IRuntimeSessionMetadata, kernelSpec: JupyterKernelSpec, dynState: LanguageRuntimeDynState): Promise<ILanguageRuntimeSession>;

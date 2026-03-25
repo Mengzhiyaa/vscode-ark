@@ -1,3 +1,4 @@
+import * as crypto from 'crypto';
 import * as assert from 'assert';
 import * as path from 'path';
 import * as vscode from 'vscode';
@@ -77,13 +78,45 @@ function makeRuntimeMetadata(): LanguageRuntimeMetadata {
     };
 }
 
+function makeConsoleServiceStub(overrides: Record<string, unknown> = {}): any {
+    return {
+        revealConsole: async () => undefined,
+        focusConsole: async () => undefined,
+        showConsole: async () => undefined,
+        getConsoleWidth: () => 80,
+        executeCode: async () => 'execution-1',
+        ...overrides,
+    };
+}
+
 suite('[Unit] RLanguageContribution', () => {
     const originalRegisterCommand = vscode.commands.registerCommand.bind(vscode.commands);
     const originalExecuteCommand = vscode.commands.executeCommand.bind(vscode.commands);
+    const originalActiveTextEditor = Object.getOwnPropertyDescriptor(vscode.window, 'activeTextEditor');
+    const originalShowTextDocument = vscode.window.showTextDocument.bind(vscode.window);
+    const originalShowInformationMessage = vscode.window.showInformationMessage.bind(vscode.window);
+    const originalShowWarningMessage = vscode.window.showWarningMessage.bind(vscode.window);
+
+    function setActiveTextEditor(editor: vscode.TextEditor | undefined): void {
+        Object.defineProperty(vscode.window, 'activeTextEditor', {
+            configurable: true,
+            get: () => editor,
+        });
+    }
 
     teardown(() => {
         (vscode.commands as { registerCommand: typeof vscode.commands.registerCommand }).registerCommand = originalRegisterCommand;
         (vscode.commands as { executeCommand: typeof vscode.commands.executeCommand }).executeCommand = originalExecuteCommand;
+        (vscode.window as { showTextDocument: typeof vscode.window.showTextDocument }).showTextDocument = originalShowTextDocument;
+        (vscode.window as { showInformationMessage: typeof vscode.window.showInformationMessage }).showInformationMessage =
+            originalShowInformationMessage;
+        (vscode.window as { showWarningMessage: typeof vscode.window.showWarningMessage }).showWarningMessage =
+            originalShowWarningMessage;
+        if (originalActiveTextEditor) {
+            Object.defineProperty(vscode.window, 'activeTextEditor', originalActiveTextEditor);
+        } else {
+            setActiveTextEditor(undefined);
+        }
     });
 
     test('registers RRuntimeManager and uses framework startRuntime for preferred runtimes', async () => {
@@ -92,7 +125,8 @@ suite('[Unit] RLanguageContribution', () => {
         const registerRuntimeManagerCalls: unknown[] = [];
         const registerExternalDiscoveryManagerCalls: string[] = [];
         const startRuntimeCalls: LanguageRuntimeMetadata[] = [];
-        let consoleShown = false;
+        let consoleFocused = false;
+        let showConsoleCalls = 0;
 
         (vscode.commands as { registerCommand: typeof vscode.commands.registerCommand }).registerCommand =
             ((command: string, callback: RegisteredCommandHandler) => {
@@ -139,17 +173,21 @@ suite('[Unit] RLanguageContribution', () => {
                     return new vscode.Disposable(() => {});
                 },
             } as unknown as IRuntimeStartupService,
+            positronNewFolderService: {} as any,
             runtimeManager: {
                 registerExternalDiscoveryManager: (languageId: string) => {
                     registerExternalDiscoveryManagerCalls.push(languageId);
                     return new vscode.Disposable(() => {});
                 },
             } as any,
-            positronConsoleService: {
-                showConsole: () => {
-                    consoleShown = true;
+            positronConsoleService: makeConsoleServiceStub({
+                focusConsole: async () => {
+                    consoleFocused = true;
                 },
-            } as any,
+                showConsole: async () => {
+                    showConsoleCalls += 1;
+                },
+            }),
             positronHelpService: {
                 showHelpTopic: async () => false,
                 find: async () => undefined,
@@ -169,7 +207,8 @@ suite('[Unit] RLanguageContribution', () => {
 
         await startConsole!();
 
-        assert.strictEqual(consoleShown, true);
+        assert.strictEqual(consoleFocused, true);
+        assert.strictEqual(showConsoleCalls, 0);
         assert.deepStrictEqual(startRuntimeCalls, [preferredRuntime]);
     });
 
@@ -222,12 +261,11 @@ suite('[Unit] RLanguageContribution', () => {
                 getPreferredRuntime: () => undefined,
                 registerRuntimeManager: () => new vscode.Disposable(() => {}),
             } as unknown as IRuntimeStartupService,
+            positronNewFolderService: {} as any,
             runtimeManager: {
                 registerExternalDiscoveryManager: () => new vscode.Disposable(() => {}),
             } as any,
-            positronConsoleService: {
-                showConsole: () => undefined,
-            } as any,
+            positronConsoleService: makeConsoleServiceStub(),
             positronHelpService: {
                 showHelpTopic: async () => false,
                 find: async () => undefined,
@@ -248,7 +286,7 @@ suite('[Unit] RLanguageContribution', () => {
         assert.strictEqual(startRuntimeCalls[0].languageId, 'r');
     });
 
-    test('reuses restored console placeholder while runtime startup is still reconnecting', async () => {
+    test('starts a new console even while runtime startup is still reconnecting', async () => {
         const registeredCommands = new Map<string, RegisteredCommandHandler>();
         let selectInstallationCalls = 0;
         let startRuntimeCalls = 0;
@@ -305,12 +343,11 @@ suite('[Unit] RLanguageContribution', () => {
                 getPreferredRuntime: () => makeRuntimeMetadata(),
                 registerRuntimeManager: () => new vscode.Disposable(() => {}),
             } as unknown as IRuntimeStartupService,
+            positronNewFolderService: {} as any,
             runtimeManager: {
                 registerExternalDiscoveryManager: () => new vscode.Disposable(() => {}),
             } as any,
-            positronConsoleService: {
-                showConsole: () => undefined,
-            } as any,
+            positronConsoleService: makeConsoleServiceStub(),
             positronHelpService: {
                 showHelpTopic: async () => false,
                 find: async () => undefined,
@@ -326,7 +363,204 @@ suite('[Unit] RLanguageContribution', () => {
 
         await startConsole!();
 
-        assert.strictEqual(startRuntimeCalls, 0);
+        assert.strictEqual(startRuntimeCalls, 1);
         assert.strictEqual(selectInstallationCalls, 0);
+    });
+
+    test('uses positron-compatible runtimeId hashing', () => {
+        const contribution = new RLanguageContribution(makeContext(), {} as ISupervisorFrameworkApi);
+        const installation: RInstallation = {
+            binpath: '/opt/R/4.4.1/bin/R',
+            homepath: '/opt/R/4.4.1/lib/R',
+            version: '4.4.1',
+            current: true,
+            source: 'system',
+        };
+
+        const metadata = contribution.runtimeProvider.createRuntimeMetadata(
+            makeContext(),
+            installation,
+            makeLogChannel(),
+        );
+
+        const expectedRuntimeId = crypto.createHash('sha256')
+            .update(installation.binpath)
+            .update(installation.version)
+            .digest('hex')
+            .substring(0, 32);
+
+        assert.strictEqual(metadata.runtimeId, expectedRuntimeId);
+    });
+
+    test('runCurrentStatement delegates to the shared console execute command', async () => {
+        const registeredCommands = new Map<string, RegisteredCommandHandler>();
+        const executedCommands: Array<{ command: string; args: unknown[] }> = [];
+
+        (vscode.commands as { registerCommand: typeof vscode.commands.registerCommand }).registerCommand =
+            ((command: string, callback: RegisteredCommandHandler) => {
+                registeredCommands.set(command, callback);
+                return new vscode.Disposable(() => {});
+            }) as typeof vscode.commands.registerCommand;
+        (vscode.commands as { executeCommand: typeof vscode.commands.executeCommand }).executeCommand =
+            (async (command: string, ...args: unknown[]) => {
+                executedCommands.push({ command, args });
+                return undefined;
+            }) as typeof vscode.commands.executeCommand;
+
+        const onWillStartSession = new vscode.EventEmitter<any>();
+        const onDidDeleteRuntimeSession = new vscode.EventEmitter<string>();
+        const onDidChangeForegroundSession = new vscode.EventEmitter<any>();
+        const services = {
+            logChannel: makeLogChannel(),
+            runtimeSessionService: {
+                activeSessions: [],
+                activeSession: undefined,
+                foregroundSession: undefined,
+                onWillStartSession: onWillStartSession.event,
+                onDidDeleteRuntimeSession: onDidDeleteRuntimeSession.event,
+                onDidChangeForegroundSession: onDidChangeForegroundSession.event,
+                registerSessionManager: () => new vscode.Disposable(() => {}),
+                getSession: () => undefined,
+                getConsoleSessionForLanguage: () => undefined,
+                restartSession: async () => undefined,
+                selectInstallation: async () => undefined,
+            } as unknown as IRuntimeSessionService,
+            runtimeStartupService: {
+                startupPhase: 'complete' as RuntimeStartupPhase,
+                getRestoredSessions: async () => [],
+                getPreferredRuntime: () => undefined,
+                registerRuntimeManager: () => new vscode.Disposable(() => {}),
+            } as unknown as IRuntimeStartupService,
+            positronNewFolderService: {} as any,
+            runtimeManager: {
+                registerExternalDiscoveryManager: () => new vscode.Disposable(() => {}),
+            } as any,
+            positronConsoleService: makeConsoleServiceStub(),
+            positronHelpService: {
+                showHelpTopic: async () => false,
+                find: async () => undefined,
+                showWelcomePage: () => undefined,
+            },
+        };
+
+        const contribution = new RLanguageContribution(makeContext(), {} as ISupervisorFrameworkApi);
+        contribution.registerContributions(services);
+
+        const runCurrentStatement = registeredCommands.get(RCommandIds.runCurrentStatement);
+        assert.ok(runCurrentStatement, 'Expected run current statement command to be registered');
+
+        await runCurrentStatement!();
+
+        assert.ok(executedCommands.some((entry) =>
+            entry.command === 'supervisor.console.executeCode' &&
+            entry.args.length === 0
+        ));
+    });
+
+    test('helpShowHelpAtCursor uses the console-session owner for R language services', async () => {
+        const registeredCommands = new Map<string, RegisteredCommandHandler>();
+        const helpRequests: Array<{ line: number; character: number }> = [];
+        const helpTopicCalls: Array<{ languageId: string; topic: string }> = [];
+        const informationMessages: string[] = [];
+
+        (vscode.commands as { registerCommand: typeof vscode.commands.registerCommand }).registerCommand =
+            ((command: string, callback: RegisteredCommandHandler) => {
+                registeredCommands.set(command, callback);
+                return new vscode.Disposable(() => {});
+            }) as typeof vscode.commands.registerCommand;
+        (vscode.commands as { executeCommand: typeof vscode.commands.executeCommand }).executeCommand =
+            (async () => undefined) as typeof vscode.commands.executeCommand;
+        (vscode.window as { showInformationMessage: typeof vscode.window.showInformationMessage }).showInformationMessage =
+            ((message: string) => {
+                informationMessages.push(message);
+                return Promise.resolve(undefined);
+            }) as typeof vscode.window.showInformationMessage;
+
+        const editorDocument = {
+            languageId: 'r',
+            uri: vscode.Uri.parse('file:///workspace/test.R'),
+            lineCount: 1,
+            getText: () => 'mean',
+            lineAt: (line: number) => ({
+                text: line === 0 ? 'mean' : '',
+                range: new vscode.Range(line, 0, line, line === 0 ? 4 : 0),
+            }),
+        } as unknown as vscode.TextDocument;
+        const editor = {
+            document: editorDocument,
+            selection: new vscode.Selection(new vscode.Position(0, 2), new vscode.Position(0, 2)),
+            selections: [new vscode.Selection(new vscode.Position(0, 2), new vscode.Position(0, 2))],
+        } as unknown as vscode.TextEditor;
+        setActiveTextEditor(editor);
+
+        const consoleSession = {
+            runtimeMetadata: makeRuntimeMetadata(),
+            waitLsp: async () => ({
+                helpTopicProvider: {
+                    provideHelpTopic: async (
+                        _document: vscode.TextDocument,
+                        position: vscode.Position,
+                    ) => {
+                        helpRequests.push({
+                            line: position.line,
+                            character: position.character,
+                        });
+                        return 'mean';
+                    },
+                },
+            }),
+        };
+
+        const onWillStartSession = new vscode.EventEmitter<any>();
+        const onDidDeleteRuntimeSession = new vscode.EventEmitter<string>();
+        const onDidChangeForegroundSession = new vscode.EventEmitter<any>();
+        const services = {
+            logChannel: makeLogChannel(),
+            runtimeSessionService: {
+                activeSessions: [],
+                activeSession: undefined,
+                foregroundSession: undefined,
+                onWillStartSession: onWillStartSession.event,
+                onDidDeleteRuntimeSession: onDidDeleteRuntimeSession.event,
+                onDidChangeForegroundSession: onDidChangeForegroundSession.event,
+                registerSessionManager: () => new vscode.Disposable(() => {}),
+                getSession: () => undefined,
+                getConsoleSessionForLanguage: (languageId: string) =>
+                    languageId === 'r' ? consoleSession as any : undefined,
+                restartSession: async () => undefined,
+                selectInstallation: async () => undefined,
+            } as unknown as IRuntimeSessionService,
+            runtimeStartupService: {
+                startupPhase: 'complete' as RuntimeStartupPhase,
+                getRestoredSessions: async () => [],
+                getPreferredRuntime: () => undefined,
+                registerRuntimeManager: () => new vscode.Disposable(() => {}),
+            } as unknown as IRuntimeStartupService,
+            positronNewFolderService: {} as any,
+            runtimeManager: {
+                registerExternalDiscoveryManager: () => new vscode.Disposable(() => {}),
+            } as any,
+            positronConsoleService: makeConsoleServiceStub(),
+            positronHelpService: {
+                showHelpTopic: async (languageId: string, topic: string) => {
+                    helpTopicCalls.push({ languageId, topic });
+                    return true;
+                },
+                find: async () => undefined,
+                showWelcomePage: () => undefined,
+            },
+        };
+
+        const contribution = new RLanguageContribution(makeContext(), {} as ISupervisorFrameworkApi);
+        contribution.registerContributions(services);
+
+        const helpShowHelpAtCursor = registeredCommands.get(RCommandIds.helpShowHelpAtCursor);
+        assert.ok(helpShowHelpAtCursor, 'Expected help at cursor command to be registered');
+
+        await helpShowHelpAtCursor!();
+
+        assert.deepStrictEqual(helpRequests, [{ line: 0, character: 2 }]);
+        assert.deepStrictEqual(helpTopicCalls, [{ languageId: 'r', topic: 'mean' }]);
+        assert.deepStrictEqual(informationMessages, []);
     });
 });

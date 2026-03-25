@@ -1,3 +1,4 @@
+import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
@@ -46,8 +47,6 @@ const RUNTIME_SESSION_LOCATION = {
     Workspace: 'workspace' as LanguageRuntimeSessionLocation,
 } as const;
 
-const RUNTIME_STARTUP_PHASE_COMPLETE = 'complete';
-
 function loadDefaultRIconBase64(
     context: vscode.ExtensionContext,
     logChannel?: vscode.LogOutputChannel
@@ -63,12 +62,10 @@ function loadDefaultRIconBase64(
 }
 
 function createRuntimeId(binpath: string, version: string): string {
-    const runtimeIdSuffix = Buffer.from(binpath)
-        .toString('base64')
-        .replace(/=+$/, '')
-        .slice(0, 8);
-
-    return `r-${version}-${runtimeIdSuffix}`;
+    const digest = crypto.createHash('sha256');
+    digest.update(binpath);
+    digest.update(version);
+    return digest.digest('hex').substring(0, 32);
 }
 
 export function restoreRInstallationFromMetadata(
@@ -315,6 +312,7 @@ export class RLanguageContribution implements ILanguageExtensionContribution {
             this._extensionContext,
             this.runtimeProvider,
             services.runtimeManager,
+            services.runtimeStartupService,
             services.logChannel,
         );
         const runtimeSessionManager = new RSessionManager(
@@ -346,36 +344,7 @@ export class RLanguageContribution implements ILanguageExtensionContribution {
             }),
             vscode.commands.registerCommand(RCommandIds.startConsole, async () => {
                 try {
-                    services.positronConsoleService.showConsole();
-
-                    const existingSession =
-                        services.runtimeSessionService.getConsoleSessionForLanguage(R_LANGUAGE_ID);
-                    if (existingSession) {
-                        services.runtimeSessionService.focusSession(existingSession.sessionId);
-                        return;
-                    }
-
-                    if (services.runtimeStartupService.startupPhase !== RUNTIME_STARTUP_PHASE_COMPLETE) {
-                        const restoredSessions = await services.runtimeStartupService.getRestoredSessions();
-                        const restoredConsoleSession = restoredSessions.find((session) => {
-                            if (session.runtimeMetadata.languageId !== R_LANGUAGE_ID) {
-                                return false;
-                            }
-
-                            return session.metadata.sessionMode === 'console' || session.hasConsole === true;
-                        });
-
-                        if (
-                            restoredConsoleSession &&
-                            !services.runtimeSessionService.getSession(restoredConsoleSession.metadata.sessionId)
-                        ) {
-                            services.logChannel.info(
-                                `[R] Waiting for restored console session ${restoredConsoleSession.metadata.sessionId} ` +
-                                'instead of starting a duplicate runtime.',
-                            );
-                            return;
-                        }
-                    }
+                    await services.positronConsoleService.focusConsole();
 
                     const preferredRuntime =
                         services.runtimeStartupService.getPreferredRuntime(R_LANGUAGE_ID);
@@ -450,103 +419,7 @@ export class RLanguageContribution implements ILanguageExtensionContribution {
                 }
             }),
             vscode.commands.registerCommand(RCommandIds.runCurrentStatement, async () => {
-                const editor = vscode.window.activeTextEditor;
-                if (!editor || editor.document.languageId !== R_LANGUAGE_ID) {
-                    vscode.window.showWarningMessage('No active R file');
-                    return;
-                }
-
-                const session = services.runtimeSessionService.activeSession;
-                if (!session || session.runtimeMetadata.languageId !== R_LANGUAGE_ID) {
-                    vscode.window.showWarningMessage('No active R session. Start a console first.');
-                    return;
-                }
-
-                let code: string;
-                let rangeToHighlight: vscode.Range;
-
-                if (!editor.selection.isEmpty) {
-                    code = editor.document.getText(editor.selection);
-                    rangeToHighlight = editor.selection;
-                    services.logChannel.debug('Executing selected code');
-                } else {
-                    const lsp = session.lsp;
-                    const provider = lsp.statementRangeProvider;
-
-                    let statementResult: { range: vscode.Range; code?: string } | null | undefined;
-
-                    if (provider) {
-                        try {
-                            statementResult = await provider.provideStatementRange(
-                                editor.document,
-                                editor.selection.active,
-                                new vscode.CancellationTokenSource().token
-                            );
-                        } catch (error) {
-                            services.logChannel.warn(`Statement range request failed: ${error}`);
-                        }
-                    }
-
-                    if (statementResult) {
-                        code = statementResult.code || editor.document.getText(statementResult.range);
-                        rangeToHighlight = statementResult.range;
-                        services.logChannel.debug('Executing statement from LSP');
-                    } else {
-                        const line = editor.document.lineAt(editor.selection.active.line);
-                        code = line.text;
-                        rangeToHighlight = line.range;
-                        services.logChannel.debug('Executing current line (fallback)');
-                    }
-                }
-
-                if (!code.trim()) {
-                    services.logChannel.debug('Skipping empty code');
-                    return;
-                }
-
-                await services.positronConsoleService.executeCode(
-                    editor.document.languageId,
-                    session.sessionId,
-                    code,
-                    {
-                        source: 'editor',
-                        fileUri: editor.document.uri,
-                        lineNumber: rangeToHighlight.start.line + 1
-                    },
-                    false
-                );
-
-                editor.selection = new vscode.Selection(rangeToHighlight.start, rangeToHighlight.end);
-                editor.revealRange(rangeToHighlight);
-
-                const nextLine = rangeToHighlight.end.line + 1;
-                if (nextLine < editor.document.lineCount) {
-                    const newPosition = new vscode.Position(nextLine, 0);
-                    editor.selection = new vscode.Selection(newPosition, newPosition);
-                    editor.revealRange(new vscode.Range(newPosition, newPosition));
-                } else {
-                    const lastLine = editor.document.lineAt(editor.document.lineCount - 1);
-                    if (lastLine.text.trim().length > 0) {
-                        const success = await editor.edit(editBuilder => {
-                            editBuilder.insert(lastLine.range.end, '\n');
-                        });
-                        if (!success) {
-                            services.logChannel.warn('Failed to append newline after statement execution');
-                        }
-                    }
-
-                    const newLineNumber = editor.document.lineCount - 1;
-                    const newPosition = new vscode.Position(newLineNumber, 0);
-                    editor.selection = new vscode.Selection(newPosition, newPosition);
-                    editor.revealRange(new vscode.Range(newPosition, newPosition));
-                }
-
-                await vscode.window.showTextDocument(editor.document, {
-                    viewColumn: editor.viewColumn,
-                    preserveFocus: false
-                });
-
-                services.logChannel.debug(`Executed: ${code.substring(0, 80)}${code.length > 80 ? '...' : ''}`);
+                return vscode.commands.executeCommand('supervisor.console.executeCode');
             }),
             vscode.commands.registerCommand(RCommandIds.insertAssignmentOperator, async () => {
                 const editor = vscode.window.activeTextEditor;

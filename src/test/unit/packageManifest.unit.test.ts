@@ -21,6 +21,7 @@ interface PackageJsonShape {
         languages?: Array<{ id?: string }>;
         grammars?: Array<{ language?: string }>;
         commands?: Array<{ command?: string }>;
+        keybindings?: Array<{ command?: string; key?: string; mac?: string; when?: string }>;
     };
 }
 
@@ -73,6 +74,19 @@ suite('[Unit] R package manifest', () => {
         assert.ok(commands.has('supervisor.insertAssignmentOperator'));
         assert.ok(commands.has('supervisor.insertPipeOperator'));
         assert.ok(commands.has('supervisor.help.showHelpAtCursor'));
+
+        const keybindings = packageJson.contributes?.keybindings ?? [];
+        assert.ok(keybindings.some((entry) =>
+            entry.command === 'supervisor.console.executeCode' &&
+            entry.key === 'ctrl+enter' &&
+            entry.mac === 'cmd+enter' &&
+            entry.when === 'editorTextFocus && editorLangId == r'
+        ));
+        assert.ok(keybindings.some((entry) =>
+            entry.command === 'supervisor.console.executeCodeWithoutAdvancing' &&
+            entry.key === 'alt+enter' &&
+            entry.when === 'editorTextFocus && editorLangId == r'
+        ));
     });
 
     test('keeps release files and packaging rules', () => {
