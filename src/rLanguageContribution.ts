@@ -16,6 +16,7 @@ import type {
     LanguageRuntimeStartupBehavior,
     LanguageSessionMode,
     IRuntimeSessionMetadata,
+    ISupervisorFrameworkApi,
 } from './types/supervisor-api';
 import { RCommandIds } from './rCommandIds';
 import { registerTabCompletion } from './editor/tabCompletion';
@@ -23,6 +24,8 @@ import { registerHelpActions } from './services/help/helpActions';
 import { R_LANGUAGE_ID } from './languageIds';
 import { createJupyterKernelSpec } from './runtime/kernelSpec';
 import { RLanguageLsp } from './runtime/lsp';
+import { RRuntimeManager } from './runtime-manager';
+import { RRuntimeStartupManager } from './runtime-startup-manager';
 import { RSessionManager } from './session-manager';
 import {
     formatRuntimeName,
@@ -42,6 +45,8 @@ const RUNTIME_STARTUP_BEHAVIOR = {
 const RUNTIME_SESSION_LOCATION = {
     Workspace: 'workspace' as LanguageRuntimeSessionLocation,
 } as const;
+
+const RUNTIME_STARTUP_PHASE_COMPLETE = 'complete';
 
 function loadDefaultRIconBase64(
     context: vscode.ExtensionContext,
@@ -288,7 +293,10 @@ export class RLanguageContribution implements ILanguageExtensionContribution {
     readonly runtimeProvider: RLanguageRuntimeProvider;
     readonly binaryProvider: RBinaryProvider;
 
-    constructor(private readonly _extensionContext: vscode.ExtensionContext) {
+    constructor(
+        private readonly _extensionContext: vscode.ExtensionContext,
+        private readonly _api: ISupervisorFrameworkApi,
+    ) {
         this.runtimeProvider = new RLanguageRuntimeProvider(_extensionContext);
         this.binaryProvider = new RBinaryProvider(_extensionContext);
     }
@@ -297,6 +305,18 @@ export class RLanguageContribution implements ILanguageExtensionContribution {
         services: ILanguageContributionServices,
     ): vscode.Disposable[] {
         registerTabCompletion(this._extensionContext);
+        const runtimeManager = new RRuntimeManager(
+            this._extensionContext,
+            this._api,
+            this.runtimeProvider,
+            services.logChannel,
+        );
+        const runtimeStartupManager = new RRuntimeStartupManager(
+            this._extensionContext,
+            this.runtimeProvider,
+            services.runtimeManager,
+            services.logChannel,
+        );
         const runtimeSessionManager = new RSessionManager(
             this._extensionContext,
             services.runtimeSessionService,
@@ -304,6 +324,11 @@ export class RLanguageContribution implements ILanguageExtensionContribution {
             services.logChannel,
         );
         return [
+            services.runtimeManager.registerExternalDiscoveryManager?.(this.runtimeProvider.languageId) ??
+                new vscode.Disposable(() => undefined),
+            services.runtimeStartupService.registerRuntimeManager(runtimeStartupManager),
+            services.runtimeSessionService.registerSessionManager(runtimeManager),
+            runtimeStartupManager,
             runtimeSessionManager,
             ...registerHelpActions(
                 this.runtimeProvider.languageId,
@@ -330,17 +355,62 @@ export class RLanguageContribution implements ILanguageExtensionContribution {
                         return;
                     }
 
+                    if (services.runtimeStartupService.startupPhase !== RUNTIME_STARTUP_PHASE_COMPLETE) {
+                        const restoredSessions = await services.runtimeStartupService.getRestoredSessions();
+                        const restoredConsoleSession = restoredSessions.find((session) => {
+                            if (session.runtimeMetadata.languageId !== R_LANGUAGE_ID) {
+                                return false;
+                            }
+
+                            return session.metadata.sessionMode === 'console' || session.hasConsole === true;
+                        });
+
+                        if (
+                            restoredConsoleSession &&
+                            !services.runtimeSessionService.getSession(restoredConsoleSession.metadata.sessionId)
+                        ) {
+                            services.logChannel.info(
+                                `[R] Waiting for restored console session ${restoredConsoleSession.metadata.sessionId} ` +
+                                'instead of starting a duplicate runtime.',
+                            );
+                            return;
+                        }
+                    }
+
                     const preferredRuntime =
                         services.runtimeStartupService.getPreferredRuntime(R_LANGUAGE_ID);
                     if (preferredRuntime) {
-                        await services.runtimeSessionService.selectRuntime(
-                            preferredRuntime.runtimeId,
+                        await this._api.startRuntime(
+                            preferredRuntime,
                             'positron.r.startConsole command',
+                            true,
                         );
                         return;
                     }
 
-                    await services.runtimeSessionService.ensureSessionForLanguage(R_LANGUAGE_ID);
+                    const installation = await services.runtimeSessionService.selectInstallation<RInstallation>(
+                        R_LANGUAGE_ID,
+                        {
+                            allowBrowse: true,
+                            persistSelection: true,
+                            title: 'Start R Console',
+                            placeHolder: 'Select R installation to start',
+                        },
+                    );
+                    if (!installation) {
+                        return;
+                    }
+
+                    const runtimeMetadata = this.runtimeProvider.createRuntimeMetadata(
+                        this._extensionContext,
+                        installation,
+                        services.logChannel,
+                    );
+                    await this._api.startRuntime(
+                        runtimeMetadata,
+                        'positron.r.startConsole command',
+                        true,
+                    );
                 } catch (error) {
                     services.logChannel.error(`[R] Failed to start console session: ${error}`);
                     vscode.window.showErrorMessage(`Failed to start R session: ${error}`);

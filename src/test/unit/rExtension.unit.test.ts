@@ -18,9 +18,20 @@ function makeContext(): vscode.ExtensionContext {
 
 suite('[Unit] Split R extension entry', () => {
     const originalGetExtension = vscode.extensions.getExtension.bind(vscode.extensions);
+    const originalRegisterDebugAdapterDescriptorFactory =
+        vscode.debug.registerDebugAdapterDescriptorFactory.bind(vscode.debug);
+    const activeContexts: vscode.ExtensionContext[] = [];
 
     teardown(() => {
         (vscode.extensions as { getExtension: typeof vscode.extensions.getExtension }).getExtension = originalGetExtension;
+        (vscode.debug as {
+            registerDebugAdapterDescriptorFactory: typeof vscode.debug.registerDebugAdapterDescriptorFactory
+        }).registerDebugAdapterDescriptorFactory = originalRegisterDebugAdapterDescriptorFactory;
+        for (const context of activeContexts.splice(0)) {
+            for (const disposable of context.subscriptions) {
+                disposable.dispose();
+            }
+        }
     });
 
     test('throws when the supervisor dependency is unavailable', async () => {
@@ -34,6 +45,11 @@ suite('[Unit] Split R extension entry', () => {
 
     test('registers R language support through the supervisor API', async () => {
         const registrations: unknown[] = [];
+        (vscode.debug as {
+            registerDebugAdapterDescriptorFactory: typeof vscode.debug.registerDebugAdapterDescriptorFactory
+        }).registerDebugAdapterDescriptorFactory = (() => {
+            return new vscode.Disposable(() => {});
+        }) as typeof vscode.debug.registerDebugAdapterDescriptorFactory;
         const api: Partial<ISupervisorFrameworkApi> = {
             registerLanguageSupport: async (registration) => {
                 registrations.push(registration);
@@ -50,7 +66,10 @@ suite('[Unit] Split R extension entry', () => {
                 : undefined;
         }) as typeof vscode.extensions.getExtension;
 
-        await rExtension.activate(makeContext());
+        const context = makeContext();
+        activeContexts.push(context);
+
+        await rExtension.activate(context);
 
         assert.strictEqual(registrations.length, 1, 'Expected one language registration');
         const registration = registrations[0] as {

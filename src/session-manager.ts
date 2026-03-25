@@ -88,6 +88,26 @@ export class RSessionManager implements vscode.Disposable {
                 client.dispose();
             }),
         );
+        rSession.register(
+            this._runtimeSessionService.watchUiClient(rSession.sessionId, () => {
+                void this.enqueueActivation(async () => {
+                    if (rSession.metadata.sessionMode === SESSION_MODE_CONSOLE) {
+                        const lastForegroundSessionId = this.getLastForegroundSessionId();
+                        if (lastForegroundSessionId === rSession.sessionId) {
+                            await this.activateConsoleSession(
+                                rSession,
+                                'ui client started for foreground console session',
+                            );
+                        }
+                        return;
+                    }
+
+                    if (rSession.metadata.sessionMode === SESSION_MODE_NOTEBOOK) {
+                        await this.activateSession(rSession, 'ui client started for notebook session');
+                    }
+                });
+            }),
+        );
     }
 
     private deleteSession(sessionId: string): void {
