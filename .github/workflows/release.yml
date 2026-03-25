@@ -139,18 +139,21 @@ jobs:
     needs:
       - package
       - release
-    if: ${{ secrets.VSCE_PAT != '' }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
+    env:
+      VSCE_PAT: ${{ secrets.VSCE_PAT }}
 
     steps:
       - name: Download packaged artifacts
+        if: env.VSCE_PAT != ''
         uses: actions/download-artifact@v4
         with:
           path: artifacts
 
       - name: Setup Node.js
+        if: env.VSCE_PAT != ''
         uses: actions/setup-node@v4
         with:
           node-version: 20
@@ -158,9 +161,8 @@ jobs:
           cache-dependency-path: package-lock.json
 
       - name: Publish to Visual Studio Marketplace
+        if: env.VSCE_PAT != ''
         shell: bash
-        env:
-          VSCE_PAT: ${{ secrets.VSCE_PAT }}
         run: |
           shopt -s globstar nullglob
           files=(artifacts/**/*.vsix)
@@ -174,18 +176,21 @@ jobs:
     needs:
       - package
       - release
-    if: ${{ secrets.OVSX_PAT != '' }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
+    env:
+      OVSX_PAT: ${{ secrets.OVSX_PAT }}
 
     steps:
       - name: Download packaged artifacts
+        if: env.OVSX_PAT != ''
         uses: actions/download-artifact@v4
         with:
           path: artifacts
 
       - name: Setup Node.js
+        if: env.OVSX_PAT != ''
         uses: actions/setup-node@v4
         with:
           node-version: 20
@@ -193,9 +198,8 @@ jobs:
           cache-dependency-path: package-lock.json
 
       - name: Publish to Open VSX
+        if: env.OVSX_PAT != ''
         shell: bash
-        env:
-          OVSX_PAT: ${{ secrets.OVSX_PAT }}
         run: |
           shopt -s globstar nullglob
           files=(artifacts/**/*.vsix)

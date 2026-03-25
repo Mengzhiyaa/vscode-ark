@@ -8,11 +8,15 @@
 .vscode/**
 .vscode-test/**
 .vscode-test.mjs
+.deps/**
 node_modules/**
 out/**
+artifacts/**
+docs/**
 package-lock.json
 tsconfig.json
 eslint.config.mjs
+esbuild.mjs
 webpack.config.js
 scripts/**
 webview/package.json

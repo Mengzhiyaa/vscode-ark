@@ -58,17 +58,66 @@ jobs:
           SUPERVISOR_DEV_EXTENSION_PATH: ${{ env.SUPERVISOR_CHECKOUT_PATH }}
         run: npm run test:unit:ext
 
+  package:
+    needs: verify
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-latest
+            target: linux-x64
+            target_os: linux
+            target_arch: x64
+          - runner: ubuntu-latest
+            target: linux-arm64
+            target_os: linux
+            target_arch: arm64
+          - runner: macos-15
+            target: darwin-x64
+            target_os: darwin
+            target_arch: x64
+          - runner: macos-latest
+            target: darwin-arm64
+            target_os: darwin
+            target_arch: arm64
+          - runner: windows-latest
+            target: win32-x64
+            target_os: windows
+            target_arch: x64
+
+    runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
       - name: Install target binaries
+        env:
+          TARGET_OS: ${{ matrix.target_os }}
+          TARGET_ARCH: ${{ matrix.target_arch }}
         run: npm run install:binaries -- --retry 3
 
-      - name: Package Linux VSIX smoke artifact
+      - name: Package target VSIX
+        shell: bash
         run: |
           mkdir -p artifacts
-          npx vsce package --no-dependencies --target linux-x64 --out artifacts/vscode-ark-linux-x64.vsix
+          npx vsce package --no-dependencies --target "${{ matrix.target }}" --out "artifacts/vscode-ark-${{ matrix.target }}.vsix"
 
       - name: Upload VSIX artifact
         uses: actions/upload-artifact@v4
         with:
-          name: vscode-ark-linux-x64
+          name: vscode-ark-${{ matrix.target }}
           path: artifacts/*.vsix
-          retention-days: 14
+          retention-days: 1
