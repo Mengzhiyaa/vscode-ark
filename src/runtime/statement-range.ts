@@ -6,19 +6,56 @@
 import * as vscode from 'vscode';
 import { LanguageClient, Position, Range, RequestType, VersionedTextDocumentIdentifier } from 'vscode-languageclient/node';
 
+enum StatementRangeKind {
+    Success = 'success',
+    Rejection = 'rejection',
+}
+
+enum StatementRangeRejectionKind {
+    Syntax = 'syntax',
+}
+
 interface StatementRangeParams {
     textDocument: VersionedTextDocumentIdentifier;
     position: Position;
 }
 
-interface StatementRangeResponse {
+interface StatementRangeLegacyResponse {
     range: Range;
     code?: string;
 }
 
+interface StatementRangeSuccessResponse {
+    kind: StatementRangeKind.Success;
+    range: Range;
+    code?: string;
+}
+
+interface StatementRangeSyntaxRejectionResponse {
+    kind: StatementRangeKind.Rejection;
+    rejectionKind: StatementRangeRejectionKind.Syntax;
+    line?: number;
+}
+
+type StatementRangeResponse =
+    | StatementRangeLegacyResponse
+    | StatementRangeSuccessResponse
+    | StatementRangeSyntaxRejectionResponse;
+
 export namespace StatementRangeRequest {
     export const type: RequestType<StatementRangeParams, StatementRangeResponse | undefined, any> =
         new RequestType('positron/textDocument/statementRange');
+}
+
+export class StatementRangeSyntaxError extends Error {
+    constructor(readonly line?: number) {
+        super(
+            line === undefined
+                ? 'Cannot execute code due to a syntax error.'
+                : `Cannot execute code due to a syntax error near line ${line + 1}.`,
+        );
+        this.name = 'StatementRangeSyntaxError';
+    }
 }
 
 /**
@@ -76,10 +113,28 @@ export class RStatementRangeProvider {
             return undefined;
         }
 
-        const range = this._client.protocol2CodeConverter.asRange(response.range);
-        // Explicitly normalize non-strings to `undefined` (i.e. a possible `null`)
-        const code = typeof response.code === 'string' ? response.code : undefined;
+        if (!('kind' in response)) {
+            const range = this._client.protocol2CodeConverter.asRange(response.range);
+            const code = typeof response.code === 'string' ? response.code : undefined;
+            return { range, code };
+        }
 
-        return { range, code };
+        switch (response.kind) {
+            case StatementRangeKind.Success: {
+                const range = this._client.protocol2CodeConverter.asRange(response.range);
+                const code = typeof response.code === 'string' ? response.code : undefined;
+                return { range, code };
+            }
+            case StatementRangeKind.Rejection: {
+                switch (response.rejectionKind) {
+                    case StatementRangeRejectionKind.Syntax:
+                        throw new StatementRangeSyntaxError(response.line);
+                    default:
+                        throw new Error(`Unrecognized 'StatementRangeRejectionKind': ${response.rejectionKind}`);
+                }
+            }
+            default:
+                throw new Error(`Unrecognized 'StatementRangeKind': ${String((response as { kind?: unknown }).kind)}`);
+        }
     }
 }

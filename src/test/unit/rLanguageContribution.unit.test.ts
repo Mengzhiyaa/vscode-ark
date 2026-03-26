@@ -119,13 +119,14 @@ suite('[Unit] RLanguageContribution', () => {
         }
     });
 
-    test('registers RRuntimeManager and uses framework startRuntime for preferred runtimes', async () => {
+    test('registers RRuntimeManager and reveals console without stealing focus for preferred runtimes', async () => {
         const registeredCommands = new Map<string, RegisteredCommandHandler>();
         const registerSessionManagerCalls: unknown[] = [];
         const registerRuntimeManagerCalls: unknown[] = [];
         const registerExternalDiscoveryManagerCalls: string[] = [];
         const startRuntimeCalls: LanguageRuntimeMetadata[] = [];
-        let consoleFocused = false;
+        const revealConsoleCalls: boolean[] = [];
+        let focusConsoleCalls = 0;
         let showConsoleCalls = 0;
 
         (vscode.commands as { registerCommand: typeof vscode.commands.registerCommand }).registerCommand =
@@ -181,8 +182,11 @@ suite('[Unit] RLanguageContribution', () => {
                 },
             } as any,
             positronConsoleService: makeConsoleServiceStub({
+                revealConsole: async (preserveFocus?: boolean) => {
+                    revealConsoleCalls.push(preserveFocus === true);
+                },
                 focusConsole: async () => {
-                    consoleFocused = true;
+                    focusConsoleCalls += 1;
                 },
                 showConsole: async () => {
                     showConsoleCalls += 1;
@@ -207,7 +211,8 @@ suite('[Unit] RLanguageContribution', () => {
 
         await startConsole!();
 
-        assert.strictEqual(consoleFocused, true);
+        assert.deepStrictEqual(revealConsoleCalls, [true]);
+        assert.strictEqual(focusConsoleCalls, 0);
         assert.strictEqual(showConsoleCalls, 0);
         assert.deepStrictEqual(startRuntimeCalls, [preferredRuntime]);
     });

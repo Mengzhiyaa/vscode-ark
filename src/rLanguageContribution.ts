@@ -344,7 +344,9 @@ export class RLanguageContribution implements ILanguageExtensionContribution {
             }),
             vscode.commands.registerCommand(RCommandIds.startConsole, async () => {
                 try {
-                    await services.positronConsoleService.focusConsole();
+                    // Match Positron: reveal the console so runtime startup is visible,
+                    // but preserve editor focus unless a caller explicitly requests input focus.
+                    await services.positronConsoleService.revealConsole(true);
 
                     const preferredRuntime =
                         services.runtimeStartupService.getPreferredRuntime(R_LANGUAGE_ID);
