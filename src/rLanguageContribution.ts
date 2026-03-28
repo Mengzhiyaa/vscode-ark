@@ -23,7 +23,7 @@ import { RCommandIds } from './rCommandIds';
 import { registerTabCompletion } from './editor/tabCompletion';
 import { registerHelpActions } from './services/help/helpActions';
 import { R_LANGUAGE_ID } from './languageIds';
-import { createJupyterKernelSpec } from './runtime/kernelSpec';
+import { createJupyterKernelSpec } from './runtime/kernel-spec';
 import { RLanguageLsp } from './runtime/lsp';
 import { RRuntimeManager } from './runtime-manager';
 import { RRuntimeStartupManager } from './runtime-startup-manager';
@@ -31,12 +31,18 @@ import { RSessionManager } from './session-manager';
 import {
     formatRuntimeName,
     getBestRInstallation,
-    inferCondaEnvironmentFromRBinary,
     promptForRPath,
-    type RInstallation,
-    type RInstallationSource,
     rRuntimeDiscoverer,
-} from './runtime/rDiscovery';
+} from './runtime/provider';
+import { setNativeRFinder } from './runtime/provider-ret';
+import {
+    getMetadataExtra,
+    isPixiMetadata,
+    RInstallation,
+    restorePackagerMetadata,
+    type RInstallationSource,
+} from './runtime/r-installation';
+import { getNativeRFinder } from './runtime/native-r-finder';
 
 const RUNTIME_STARTUP_BEHAVIOR = {
     Immediate: 'immediate' as LanguageRuntimeStartupBehavior,
@@ -74,7 +80,12 @@ export function restoreRInstallationFromMetadata(
     const extraRuntimeData = metadata.extraRuntimeData as {
         homepath?: string;
         binpath?: string;
+        scriptpath?: string;
         arch?: string;
+        current?: boolean;
+        default?: boolean;
+        reasonDiscovered?: RInstallation['reasonDiscovered'];
+        packagerMetadata?: RInstallation['packagerMetadata'];
         condaEnvPath?: string;
         envName?: string;
     } | undefined;
@@ -87,24 +98,29 @@ export function restoreRInstallationFromMetadata(
     const binpath = extraRuntimeData?.binpath ?? metadata.runtimePath;
     const source = metadata.runtimeSource;
     const normalizedSource: RInstallationSource =
-        source === 'configured' || source === 'conda' || source === 'path' || source === 'system'
+        source === 'configured' || source === 'conda' || source === 'path' || source === 'system' || source === 'pixi'
             ? source
             : 'system';
+    const packagerMetadata = restorePackagerMetadata({
+        packagerMetadata: extraRuntimeData?.packagerMetadata,
+        condaEnvPath: extraRuntimeData?.condaEnvPath,
+        envName: extraRuntimeData?.envName,
+        binpath,
+    });
+    const sourceFromMetadata = packagerMetadata
+        ? (isPixiMetadata(packagerMetadata) ? 'pixi' : 'conda')
+        : normalizedSource;
 
-    const inferredConda = inferCondaEnvironmentFromRBinary(binpath);
-    const condaEnvPath = extraRuntimeData?.condaEnvPath ?? inferredConda.condaEnvPath;
-    const envName = extraRuntimeData?.envName ?? inferredConda.envName;
-
-    return {
+    return new RInstallation({
         binpath,
         homepath,
         version: metadata.languageVersion,
         arch: extraRuntimeData?.arch,
         current: metadata.startupBehavior === RUNTIME_STARTUP_BEHAVIOR.Immediate,
-        source: condaEnvPath ? 'conda' : normalizedSource,
-        condaEnvPath,
-        envName,
-    };
+        source: sourceFromMetadata,
+        reasonDiscovered: extraRuntimeData?.reasonDiscovered ?? null,
+        packagerMetadata,
+    });
 }
 
 export class RLanguageLspFactory implements ILanguageLspFactory {
@@ -132,6 +148,27 @@ export class RLanguageRuntimeProvider implements ILanguageRuntimeProvider<RInsta
 
     constructor(private readonly _extensionContext: vscode.ExtensionContext) {}
 
+    /**
+     * Initializes the NativeRFinder for RET-based discovery.
+     * Must be called once with the extension context to wire up RET.
+     */
+    initializeNativeDiscovery(
+        context: vscode.ExtensionContext,
+        logChannel: vscode.LogOutputChannel
+    ): void {
+        const finder = getNativeRFinder(
+            context.extensionPath,
+            logChannel,
+            context
+        );
+        setNativeRFinder(finder);
+        if (finder.available) {
+            logChannel.info('[R] Native R Environment Tools (RET) discovery initialized');
+        } else {
+            logChannel.info('[R] RET binary not available, using TypeScript discovery fallback');
+        }
+    }
+
     private _toRuntimeMetadata(
         installation: RInstallation,
         logChannel?: vscode.LogOutputChannel
@@ -151,13 +188,7 @@ export class RLanguageRuntimeProvider implements ILanguageRuntimeProvider<RInsta
                 ? RUNTIME_STARTUP_BEHAVIOR.Immediate
                 : RUNTIME_STARTUP_BEHAVIOR.Implicit,
             sessionLocation: RUNTIME_SESSION_LOCATION.Workspace,
-            extraRuntimeData: {
-                homepath: installation.homepath,
-                binpath: installation.binpath,
-                arch: installation.arch,
-                condaEnvPath: installation.condaEnvPath,
-                envName: installation.envName,
-            },
+            extraRuntimeData: getMetadataExtra(installation),
         };
     }
 
@@ -264,15 +295,17 @@ export class RBinaryProvider implements IBinaryProvider {
     constructor(private readonly _extensionContext: vscode.ExtensionContext) {}
 
     getBinaryDefinitions(): Readonly<Record<string, BinaryDefinition>> {
-        const version = this._extensionContext.extension.packageJSON?.positron?.binaryDependencies?.ark;
-        if (typeof version !== 'string' || !version) {
+        const arkVersion = this._extensionContext.extension.packageJSON?.positron?.binaryDependencies?.ark;
+        if (typeof arkVersion !== 'string' || !arkVersion) {
             throw new Error('Missing positron.binaryDependencies.ark in vscode-ark package.json');
         }
 
-        return {
+        const retVersion = this._extensionContext.extension.packageJSON?.positron?.binaryDependencies?.ret;
+
+        const defs: Record<string, BinaryDefinition> = {
             ark: {
                 repo: 'posit-dev/ark',
-                version,
+                version: arkVersion,
                 binaryName: process.platform === 'win32' ? 'ark.exe' : 'ark',
                 archivePattern: (version, platform) => `ark-${version}-${platform}.zip`,
                 installDir: path.join(
@@ -283,6 +316,22 @@ export class RBinaryProvider implements IBinaryProvider {
                 platformOverride: (platform) => platform.startsWith('darwin') ? 'darwin-universal' : platform,
             },
         };
+
+        if (typeof retVersion === 'string' && retVersion) {
+            defs.ret = {
+                repo: 'Mengzhiyaa/r-environment-tools',
+                version: retVersion,
+                binaryName: process.platform === 'win32' ? 'ret.exe' : 'ret',
+                archivePattern: (version, platform) => `ret-${version}-${platform}.zip`,
+                installDir: path.join(
+                    this._extensionContext.extensionPath,
+                    'resources',
+                    'ret',
+                ),
+            };
+        }
+
+        return defs;
     }
 }
 

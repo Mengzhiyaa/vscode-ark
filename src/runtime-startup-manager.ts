@@ -6,7 +6,7 @@ import type {
     ILanguageRuntimeProvider,
     LanguageRuntimeMetadata,
 } from './types/supervisor-api';
-import type { RInstallation } from './runtime/rDiscovery';
+import type { RInstallation } from './runtime/r-installation';
 
 export class RRuntimeStartupManager implements vscode.Disposable, IRuntimeManager {
     private static _nextRuntimeManagerId = 1;

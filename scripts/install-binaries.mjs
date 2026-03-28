@@ -67,27 +67,32 @@ function detectPlatform(explicitPlatform) {
     return `${normalizeOs(os.platform())}-${normalizeArch(os.arch())}`;
 }
 
-function readArkVersion() {
+function readBinaryVersions() {
     const pkg = JSON.parse(fs.readFileSync(path.join(repoRoot, 'package.json'), 'utf8'));
-    const version = pkg?.positron?.binaryDependencies?.ark;
-    if (!version) {
-        throw new Error('Missing positron.binaryDependencies.ark in package.json');
+    const deps = pkg?.positron?.binaryDependencies;
+    if (!deps || typeof deps !== 'object') {
+        throw new Error('Missing positron.binaryDependencies in package.json');
     }
-
-    return version;
+    return deps;
 }
 
-function binaryName(basePlatform) {
-    return basePlatform.startsWith('windows') ? 'ark.exe' : 'ark';
-}
-
-function archivePlatform(basePlatform) {
-    return basePlatform.startsWith('darwin') ? 'darwin-universal' : basePlatform;
-}
-
-function archiveName(version, basePlatform) {
-    return `ark-${version}-${archivePlatform(basePlatform)}.zip`;
-}
+// Binary configuration: repo, naming conventions, etc.
+const BINARY_CONFIGS = {
+    ark: {
+        repo: 'posit-dev/ark',
+        binaryName: (platform) => platform.startsWith('windows') ? 'ark.exe' : 'ark',
+        archivePattern: (version, platform) => `ark-${version}-${platform}.zip`,
+        installDir: 'resources/ark',
+        platformOverride: (platform) => platform.startsWith('darwin') ? 'darwin-universal' : platform,
+    },
+    ret: {
+        repo: 'Mengzhiyaa/r-environment-tools',
+        binaryName: (platform) => platform.startsWith('windows') ? 'ret.exe' : 'ret',
+        archivePattern: (version, platform) => `ret-${version}-${platform}.zip`,
+        installDir: 'resources/ret',
+        platformOverride: undefined,
+    },
+};
 
 function download(url, destination) {
     return new Promise((resolve, reject) => {
@@ -157,19 +162,19 @@ function findFile(rootDir, filename) {
     return undefined;
 }
 
-async function installArk(platform) {
-    const version = readArkVersion();
-    const executableName = binaryName(platform);
-    const archiveFile = archiveName(version, platform);
-    const downloadUrl = `https://github.com/posit-dev/ark/releases/download/${version}/${archiveFile}`;
-    const installDir = path.join(repoRoot, 'resources', 'ark');
-    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'vscode-ark-binary-'));
+async function installBinary(name, config, version, platform) {
+    const effectivePlatform = config.platformOverride ? config.platformOverride(platform) : platform;
+    const executableName = config.binaryName(platform);
+    const archiveFile = config.archivePattern(version, effectivePlatform);
+    const downloadUrl = `https://github.com/${config.repo}/releases/download/${version}/${archiveFile}`;
+    const installDir = path.join(repoRoot, config.installDir);
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), `vscode-ark-${name}-`));
 
     try {
         const archivePath = path.join(tempDir, archiveFile);
         const extractDir = path.join(tempDir, 'extract');
 
-        console.log(`Installing ark ${version} for ${platform}`);
+        console.log(`Installing ${name} ${version} for ${platform}`);
         console.log(`Downloading ${downloadUrl}`);
         await download(downloadUrl, archivePath);
         extractZip(archivePath, extractDir);
@@ -196,19 +201,31 @@ async function installArk(platform) {
 async function main() {
     const { retries, platform: explicitPlatform } = parseArgs();
     const platform = detectPlatform(explicitPlatform);
+    const versions = readBinaryVersions();
 
-    let lastError;
-    for (let attempt = 1; attempt <= retries; attempt += 1) {
-        try {
-            await installArk(platform);
-            return;
-        } catch (error) {
-            lastError = error;
-            console.error(`Attempt ${attempt}/${retries} failed: ${error instanceof Error ? error.message : String(error)}`);
+    for (const [name, version] of Object.entries(versions)) {
+        const config = BINARY_CONFIGS[name];
+        if (!config) {
+            console.warn(`Unknown binary '${name}' in binaryDependencies, skipping`);
+            continue;
+        }
+
+        let lastError;
+        for (let attempt = 1; attempt <= retries; attempt += 1) {
+            try {
+                await installBinary(name, config, version, platform);
+                lastError = undefined;
+                break;
+            } catch (error) {
+                lastError = error;
+                console.error(`${name} attempt ${attempt}/${retries} failed: ${error instanceof Error ? error.message : String(error)}`);
+            }
+        }
+
+        if (lastError) {
+            throw lastError;
         }
     }
-
-    throw lastError;
 }
 
 await main();

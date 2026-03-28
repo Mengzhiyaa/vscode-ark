@@ -18,6 +18,22 @@ interface KernelLookupOptions {
     rArch?: string;
 }
 
+export function getArkEnvironmentVariables(rHomePath: string): Record<string, string> {
+    const env: Record<string, string> = {
+        R_HOME: rHomePath,
+    };
+
+    if (process.platform === 'linux') {
+        env.LD_LIBRARY_PATH = `${rHomePath}/lib`;
+    }
+
+    if (process.platform === 'darwin') {
+        env.DYLD_LIBRARY_PATH = `${rHomePath}/lib`;
+    }
+
+    return env;
+}
+
 /**
  * Attempts to locate a copy of the Ark kernel. The kernel is searched for in the following
  * locations, in order:

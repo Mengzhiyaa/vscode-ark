@@ -9,7 +9,7 @@ import type {
     LanguageRuntimeMetadata,
 } from '../../types/supervisor-api';
 import { RRuntimeStartupManager } from '../../runtime-startup-manager';
-import type { RInstallation } from '../../runtime/rDiscovery';
+import { RInstallation } from '../../runtime/r-installation';
 
 function createMemento(): vscode.Memento {
     const store = new Map<string, unknown>();
@@ -57,13 +57,13 @@ function makeLogChannel(): vscode.LogOutputChannel {
 }
 
 function makeInstallation(binpath: string): RInstallation {
-    return {
+    return new RInstallation({
         binpath,
-        homepath: path.dirname(path.dirname(binpath)),
+        homepath: path.join(path.dirname(path.dirname(binpath)), 'lib', 'R'),
         version: '4.4.1',
         current: true,
         source: 'system',
-    };
+    });
 }
 
 function makeRuntimeMetadata(installation: RInstallation): LanguageRuntimeMetadata {

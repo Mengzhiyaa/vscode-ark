@@ -11,7 +11,7 @@ import type {
 } from '../../types/supervisor-api';
 import { RCommandIds } from '../../rCommandIds';
 import { RLanguageContribution } from '../../rLanguageContribution';
-import type { RInstallation } from '../../runtime/rDiscovery';
+import { RInstallation } from '../../runtime/r-installation';
 
 type RegisteredCommandHandler = (...args: any[]) => unknown;
 
@@ -87,6 +87,16 @@ function makeConsoleServiceStub(overrides: Record<string, unknown> = {}): any {
         executeCode: async () => 'execution-1',
         ...overrides,
     };
+}
+
+function makeInstallation(binpath: string): RInstallation {
+    return new RInstallation({
+        binpath,
+        homepath: path.join(path.dirname(path.dirname(binpath)), 'lib', 'R'),
+        version: '4.4.1',
+        current: true,
+        source: 'system',
+    });
 }
 
 suite('[Unit] RLanguageContribution', () => {
@@ -220,13 +230,7 @@ suite('[Unit] RLanguageContribution', () => {
     test('uses framework startRuntime after selecting an installation', async () => {
         const registeredCommands = new Map<string, RegisteredCommandHandler>();
         const startRuntimeCalls: LanguageRuntimeMetadata[] = [];
-        const installation: RInstallation = {
-            binpath: '/usr/bin/R',
-            homepath: '/usr/lib/R',
-            version: '4.4.1',
-            current: true,
-            source: 'system',
-        };
+        const installation = makeInstallation('/usr/bin/R');
 
         (vscode.commands as { registerCommand: typeof vscode.commands.registerCommand }).registerCommand =
             ((command: string, callback: RegisteredCommandHandler) => {
@@ -374,13 +378,7 @@ suite('[Unit] RLanguageContribution', () => {
 
     test('uses positron-compatible runtimeId hashing', () => {
         const contribution = new RLanguageContribution(makeContext(), {} as ISupervisorFrameworkApi);
-        const installation: RInstallation = {
-            binpath: '/opt/R/4.4.1/bin/R',
-            homepath: '/opt/R/4.4.1/lib/R',
-            version: '4.4.1',
-            current: true,
-            source: 'system',
-        };
+        const installation = makeInstallation('/opt/R/4.4.1/bin/R');
 
         const metadata = contribution.runtimeProvider.createRuntimeMetadata(
             makeContext(),

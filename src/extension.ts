@@ -17,6 +17,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     context.subscriptions.push(registerArkDebugAdapterFactory());
 
     const contribution = new RLanguageContribution(context, api);
+    contribution.runtimeProvider.initializeNativeDiscovery(context, logChannel);
+
     await api.registerLanguageSupport({
         runtimeProvider: contribution.runtimeProvider,
         binaryProvider: contribution.binaryProvider,
