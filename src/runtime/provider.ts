@@ -396,6 +396,13 @@ async function selectRBinaryFromDialog(
         return undefined;
     }
 
+    if (!installation.usable) {
+        vscode.window.showErrorMessage(
+            `Selected R installation is not usable: ${rPath}. Reason: ${friendlyReason(installation.reasonRejected)}`,
+        );
+        return undefined;
+    }
+
     if (persistSelection) {
         await persistRPath(rPath, log);
     }

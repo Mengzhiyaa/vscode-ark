@@ -37,8 +37,10 @@ import {
 import { setNativeRFinder } from './runtime/provider-ret';
 import {
     convertNativeEnvToRInstallation,
+    friendlyReason,
     getMetadataExtra,
     isPixiMetadata,
+    probeRInstallation,
     type PersistedRMetadataExtra,
     RInstallation,
     type RInstallationSource,
@@ -73,6 +75,62 @@ function createRuntimeId(binpath: string, version: string): string {
     digest.update(binpath);
     digest.update(version);
     return digest.digest('hex').substring(0, 32);
+}
+
+function createValidationLogChannel(): vscode.LogOutputChannel {
+    const noop = () => undefined;
+    const event: vscode.Event<vscode.LogLevel> = () => ({ dispose: noop });
+
+    return {
+        name: 'r-metadata-validation',
+        logLevel: vscode.LogLevel.Off,
+        onDidChangeLogLevel: event,
+        trace: noop,
+        debug: noop,
+        info: noop,
+        warn: noop,
+        error: noop,
+        append: noop,
+        appendLine: noop,
+        replace: noop,
+        clear: noop,
+        show: noop,
+        hide: noop,
+        dispose: noop,
+    } as vscode.LogOutputChannel;
+}
+
+function refreshInstallationFromProbe(
+    installation: RInstallation,
+    validatedInstallation: RInstallation,
+): void {
+    installation.homepath = validatedInstallation.homepath;
+    installation.scriptpath = validatedInstallation.scriptpath;
+    installation.semVersion = validatedInstallation.semVersion;
+    installation.version = validatedInstallation.version;
+    installation.arch = validatedInstallation.arch || installation.arch;
+    installation.orthogonal = validatedInstallation.orthogonal;
+    installation.supported = validatedInstallation.supported;
+    installation.usable = validatedInstallation.usable;
+    installation.reasonRejected = validatedInstallation.reasonRejected;
+    installation.packagerMetadata =
+        validatedInstallation.packagerMetadata ?? installation.packagerMetadata;
+    installation.locatorMetadata =
+        validatedInstallation.locatorMetadata ?? installation.locatorMetadata;
+    installation.source = installation.source ?? validatedInstallation.source;
+
+    if (installation.retPayload) {
+        installation.retPayload = {
+            ...installation.retPayload,
+            executable: installation.binpath,
+            home: installation.homepath,
+            version: installation.version,
+            scriptPath: installation.scriptpath,
+            orthogonal: installation.orthogonal,
+            locatorMetadata:
+                installation.retPayload.locatorMetadata ?? installation.locatorMetadata,
+        };
+    }
 }
 
 function normalizeRuntimeSource(
@@ -321,6 +379,23 @@ export class RLanguageRuntimeProvider implements ILanguageRuntimeProvider<RInsta
             throw new Error(`R home does not exist: ${installation.homepath}`);
         }
 
+        const validatedInstallation = await probeRInstallation(
+            installation.binpath,
+            createValidationLogChannel(),
+            installation.reasonDiscovered,
+            installation.packagerMetadata,
+        );
+        if (!validatedInstallation) {
+            throw new Error(`R installation at ${installation.binpath} is not a valid R installation`);
+        }
+
+        if (!validatedInstallation.usable) {
+            throw new Error(
+                `R installation at ${installation.binpath} is not usable. Reason: ${friendlyReason(validatedInstallation.reasonRejected)}`,
+            );
+        }
+
+        refreshInstallationFromProbe(installation, validatedInstallation);
         return this._toRuntimeMetadata(installation);
     }
 

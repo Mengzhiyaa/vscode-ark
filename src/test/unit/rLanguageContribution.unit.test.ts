@@ -1,5 +1,7 @@
 import * as crypto from 'crypto';
 import * as assert from 'assert';
+import * as fs from 'fs';
+import * as os from 'os';
 import * as path from 'path';
 import * as vscode from 'vscode';
 import type {
@@ -12,6 +14,7 @@ import type {
 import { RCommandIds } from '../../rCommandIds';
 import { RLanguageContribution } from '../../rLanguageContribution';
 import { RInstallation } from '../../runtime/r-installation';
+import * as rInstallationModule from '../../runtime/r-installation';
 
 type RegisteredCommandHandler = (...args: any[]) => unknown;
 
@@ -106,6 +109,7 @@ suite('[Unit] RLanguageContribution', () => {
     const originalShowTextDocument = vscode.window.showTextDocument.bind(vscode.window);
     const originalShowInformationMessage = vscode.window.showInformationMessage.bind(vscode.window);
     const originalShowWarningMessage = vscode.window.showWarningMessage.bind(vscode.window);
+    const originalProbeRInstallation = rInstallationModule.probeRInstallation;
 
     function setActiveTextEditor(editor: vscode.TextEditor | undefined): void {
         Object.defineProperty(vscode.window, 'activeTextEditor', {
@@ -122,6 +126,8 @@ suite('[Unit] RLanguageContribution', () => {
             originalShowInformationMessage;
         (vscode.window as { showWarningMessage: typeof vscode.window.showWarningMessage }).showWarningMessage =
             originalShowWarningMessage;
+        (rInstallationModule as { probeRInstallation: typeof rInstallationModule.probeRInstallation }).probeRInstallation =
+            originalProbeRInstallation;
         if (originalActiveTextEditor) {
             Object.defineProperty(vscode.window, 'activeTextEditor', originalActiveTextEditor);
         } else {
@@ -393,6 +399,48 @@ suite('[Unit] RLanguageContribution', () => {
             .substring(0, 32);
 
         assert.strictEqual(metadata.runtimeId, expectedRuntimeId);
+    });
+
+    test('validateMetadata rejects installations that are below the minimum supported version', async () => {
+        const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ark-metadata-unit-'));
+        const binDir = path.join(tempDir, 'bin');
+        const homeDir = path.join(tempDir, 'lib', 'R');
+        const binPath = path.join(binDir, 'R');
+        fs.mkdirSync(binDir, { recursive: true });
+        fs.mkdirSync(homeDir, { recursive: true });
+        fs.writeFileSync(binPath, '');
+
+        const contribution = new RLanguageContribution(makeContext(), {} as ISupervisorFrameworkApi);
+        const metadata: LanguageRuntimeMetadata = {
+            runtimeId: 'r-4.1.3-test',
+            runtimeName: 'R 4.1.3',
+            runtimePath: binPath,
+            runtimeVersion: '0.0.1',
+            runtimeShortName: '4.1.3',
+            runtimeSource: 'configured',
+            languageId: 'r',
+            languageName: 'R',
+            languageVersion: '4.1.3',
+            extraRuntimeData: {
+                homepath: homeDir,
+                binpath: binPath,
+            },
+        };
+
+        (rInstallationModule as { probeRInstallation: typeof rInstallationModule.probeRInstallation }).probeRInstallation =
+            (async () => new RInstallation({
+                binpath: binPath,
+                homepath: homeDir,
+                version: '4.1.3',
+                source: 'configured',
+            })) as typeof rInstallationModule.probeRInstallation;
+
+        await assert.rejects(
+            () => contribution.runtimeProvider.validateMetadata(metadata),
+            /less than 4\.2\.0/i,
+        );
+
+        fs.rmSync(tempDir, { recursive: true, force: true });
     });
 
     test('runCurrentStatement delegates to the shared console execute command', async () => {

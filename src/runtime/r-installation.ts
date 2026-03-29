@@ -4,6 +4,7 @@ import * as path from 'path';
 import { execSync } from 'child_process';
 import * as semver from 'semver';
 import * as vscode from 'vscode';
+import { MINIMUM_R_VERSION } from '../constants';
 import type {
     NativeDiscoverySource,
     NativeREnvInfo,
@@ -116,6 +117,33 @@ export interface RInstallationOptions {
     reasonRejected?: ReasonRejected | null;
 }
 
+function parseVersionParts(version: string): [number, number, number] {
+    const [major = '0', minor = '0', patch = '0'] = version.split('.');
+    return [
+        Number.parseInt(major, 10) || 0,
+        Number.parseInt(minor, 10) || 0,
+        Number.parseInt(patch, 10) || 0,
+    ];
+}
+
+function isVersionGreaterThanOrEqual(
+    version: string,
+    minimumVersion: string,
+): boolean {
+    const [major, minor, patch] = parseVersionParts(version);
+    const [minimumMajor, minimumMinor, minimumPatch] = parseVersionParts(minimumVersion);
+
+    if (major !== minimumMajor) {
+        return major > minimumMajor;
+    }
+
+    if (minor !== minimumMinor) {
+        return minor > minimumMinor;
+    }
+
+    return patch >= minimumPatch;
+}
+
 export class RInstallation {
     public usable = true;
     public supported = true;
@@ -173,7 +201,8 @@ export class RInstallation {
             convertLocatorMetadataToPackagerMetadata(options.locatorMetadata);
         this.default = isConfiguredDefaultRPath(options.binpath);
         this.orthogonal = options.orthogonal ?? computeOrthogonality(options.homepath);
-        this.supported = options.supported ?? true;
+        this.supported = options.supported ??
+            isVersionGreaterThanOrEqual(this.version, MINIMUM_R_VERSION);
         this.reasonRejected = options.reasonRejected ?? null;
         this.usable = options.usable ?? true;
 
@@ -240,7 +269,7 @@ export function friendlyReason(reason: ReasonDiscovered | ReasonRejected | null)
         case ReasonRejected.invalid:
             return 'Invalid installation';
         case ReasonRejected.unsupported:
-            return 'Unsupported installation';
+            return `Unsupported version, i.e. version is less than ${MINIMUM_R_VERSION}`;
         case ReasonRejected.nonOrthogonal:
             return 'Non-orthogonal installation';
         case ReasonRejected.excluded:

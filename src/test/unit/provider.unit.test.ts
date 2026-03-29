@@ -1,6 +1,10 @@
 import * as assert from 'assert';
+import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
 import * as vscode from 'vscode';
 import * as providerRetModule from '../../runtime/provider-ret';
+import * as rInstallationModule from '../../runtime/r-installation';
 import {
     discoverRInstallations,
     getBestRInstallation,
@@ -52,6 +56,7 @@ suite('[Unit] provider discovery', () => {
     const originalHasNativeRFinder = providerRetModule.hasNativeRFinder;
     const originalGetBestRetInstallation = providerRetModule.getBestRetInstallation;
     const originalDiscoverRetInstallations = providerRetModule.discoverRetInstallations;
+    const originalProbeRInstallation = rInstallationModule.probeRInstallation;
     let restoreConfiguration: (() => void) | undefined;
 
     setup(() => {
@@ -67,6 +72,8 @@ suite('[Unit] provider discovery', () => {
             originalGetBestRetInstallation;
         (providerRetModule as { discoverRetInstallations: typeof providerRetModule.discoverRetInstallations }).discoverRetInstallations =
             originalDiscoverRetInstallations;
+        (rInstallationModule as { probeRInstallation: typeof rInstallationModule.probeRInstallation }).probeRInstallation =
+            originalProbeRInstallation;
     });
 
     test('does not fall back to legacy TypeScript discovery when RET is unavailable', async () => {
@@ -104,5 +111,33 @@ suite('[Unit] provider discovery', () => {
         assert.strictEqual(installation?.binpath, '/opt/R/4.4.1/bin/R');
         assert.strictEqual(installation?.current, true);
         assert.deepStrictEqual(discovered.map(item => item.binpath), ['/opt/R/4.4.1/bin/R']);
+    });
+
+    test('ignores configured R paths that are below the minimum supported version', async () => {
+        const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ark-provider-unit-'));
+        const configuredPath = path.join(tempDir, 'R');
+        fs.writeFileSync(configuredPath, '');
+        restoreConfiguration?.();
+        restoreConfiguration = stubArkConfiguration({ 'r.path': configuredPath });
+
+        const unsupportedInstallation = new RInstallation({
+            binpath: configuredPath,
+            homepath: path.join(tempDir, 'lib', 'R'),
+            version: '4.1.3',
+            source: 'configured',
+        });
+
+        (providerRetModule as { hasNativeRFinder: typeof providerRetModule.hasNativeRFinder }).hasNativeRFinder =
+            (() => false) as typeof providerRetModule.hasNativeRFinder;
+        (rInstallationModule as { probeRInstallation: typeof rInstallationModule.probeRInstallation }).probeRInstallation =
+            (async () => unsupportedInstallation) as typeof rInstallationModule.probeRInstallation;
+
+        const installation = await getBestRInstallation(makeLogChannel());
+        const discovered = await discoverRInstallations(makeLogChannel());
+
+        assert.strictEqual(installation, undefined);
+        assert.deepStrictEqual(discovered, []);
+
+        fs.rmSync(tempDir, { recursive: true, force: true });
     });
 });

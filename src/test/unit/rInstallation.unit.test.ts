@@ -4,11 +4,14 @@ import type { LanguageRuntimeMetadata } from '../../types/supervisor-api';
 import { restoreRInstallationFromMetadata } from '../../rLanguageContribution';
 import {
     convertNativeEnvToRInstallation,
+    friendlyReason,
     formatRuntimeName,
     getMetadataExtra,
     RInstallation,
     ReasonDiscovered,
+    ReasonRejected,
 } from '../../runtime/r-installation';
+import { MINIMUM_R_VERSION } from '../../constants';
 
 function stubArkConfiguration(values: Record<string, unknown> = {}): () => void {
     const originalGetConfiguration = vscode.workspace.getConfiguration.bind(vscode.workspace);
@@ -160,6 +163,22 @@ suite('[Unit] RInstallation', () => {
         assert.strictEqual(formatRuntimeName(labeled), 'Overlay Label (R 4.4.1)');
         assert.strictEqual(formatRuntimeName(displayNamed), 'Display Name (R 4.4.1)');
         assert.strictEqual(formatRuntimeName(conda), 'R 4.4.1 (Conda: r)');
+    });
+
+    test('marks versions below the minimum supported version as unsupported', () => {
+        const installation = new RInstallation({
+            binpath: '/opt/R/4.1.3/bin/R',
+            homepath: '/opt/R/4.1.3/lib/R',
+            version: '4.1.3',
+        });
+
+        assert.strictEqual(installation.supported, false);
+        assert.strictEqual(installation.usable, false);
+        assert.strictEqual(installation.reasonRejected, ReasonRejected.unsupported);
+        assert.strictEqual(
+            friendlyReason(installation.reasonRejected),
+            `Unsupported version, i.e. version is less than ${MINIMUM_R_VERSION}`,
+        );
     });
 
     test('restores new metadata fields after round-tripping runtime metadata', () => {

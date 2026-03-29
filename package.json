@@ -64,6 +64,7 @@
     "vsce:package": "vsce package"
   },
   "positron": {
+    "minimumRVersion": "4.2.0",
     "binaryDependencies": {
       "ark": "0.1.242",
       "ret": "v0.1.2"
