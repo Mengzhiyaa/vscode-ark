@@ -4,9 +4,18 @@ import * as path from 'path';
 import { execSync } from 'child_process';
 import * as semver from 'semver';
 import * as vscode from 'vscode';
-import type { NativeREnvInfo } from './native-r-finder';
+import type {
+    NativeDiscoverySource,
+    NativeREnvInfo,
+    NativeREnvLocatorMetadata,
+    NativeREnvManagerInfo,
+    NativeREnvRVersionsOverlay,
+} from './native-r-finder';
 
 export type RInstallationSource = 'configured' | 'system' | 'conda' | 'path' | 'pixi';
+export type LocatorMetadata = NativeREnvLocatorMetadata;
+export type RVersionsOverlay = NativeREnvRVersionsOverlay;
+export type REnvManagerInfo = NativeREnvManagerInfo;
 
 export interface RMetadataExtra {
     homepath: string;
@@ -15,10 +24,8 @@ export interface RMetadataExtra {
     arch?: string;
     current: boolean;
     default: boolean;
+    retPayload: NativeREnvInfo;
     reasonDiscovered?: ReasonDiscovered[] | null;
-    packagerMetadata?: PackagerMetadata;
-    condaEnvPath?: string;
-    envName?: string;
 }
 
 export enum ReasonDiscovered {
@@ -35,6 +42,7 @@ export enum ReasonDiscovered {
     GUIX = 'GUIX',
     SPACK = 'SPACK',
     RIG = 'RIG',
+    RVERSIONS = 'RVERSIONS',
     WINDOWS_HQ = 'WINDOWS_HQ',
     WINDOWS_REGISTRY = 'WINDOWS_REGISTRY',
     SCOOP = 'SCOOP',
@@ -61,7 +69,13 @@ export interface PixiMetadata {
     environmentName?: string;
 }
 
-export type PackagerMetadata = CondaMetadata | PixiMetadata;
+export interface ModuleMetadata {
+    kind: 'module';
+    moduleName: string;
+    startupCommand: string;
+}
+
+export type PackagerMetadata = CondaMetadata | PixiMetadata | ModuleMetadata;
 
 export function isCondaMetadata(metadata: PackagerMetadata): metadata is CondaMetadata {
     return metadata.kind === 'conda';
@@ -71,6 +85,10 @@ export function isPixiMetadata(metadata: PackagerMetadata): metadata is PixiMeta
     return metadata.kind === 'pixi';
 }
 
+export function isModuleMetadata(metadata: PackagerMetadata): metadata is ModuleMetadata {
+    return metadata.kind === 'module';
+}
+
 export interface RInstallationOptions {
     binpath: string;
     homepath: string;
@@ -78,8 +96,21 @@ export interface RInstallationOptions {
     arch?: string;
     current?: boolean;
     source?: RInstallationSource;
+    retPayload?: NativeREnvInfo;
     reasonDiscovered?: ReasonDiscovered[] | null;
+    discoveredBy?: NativeDiscoverySource[] | null;
     packagerMetadata?: PackagerMetadata;
+    locatorMetadata?: LocatorMetadata;
+    displayName?: string;
+    name?: string;
+    manager?: REnvManagerInfo;
+    knownExecutables?: string[];
+    symlinks?: string[];
+    rversionsOverlay?: RVersionsOverlay;
+    scriptPath?: string;
+    startupCommand?: string;
+    environmentVariables?: Record<string, string>;
+    orthogonal?: boolean;
     supported?: boolean;
     usable?: boolean;
     reasonRejected?: ReasonRejected | null;
@@ -91,6 +122,8 @@ export class RInstallation {
     public reasonDiscovered: ReasonDiscovered[] | null = null;
     public reasonRejected: ReasonRejected | null = null;
 
+    public displayName: string | undefined = undefined;
+    public name: string | undefined = undefined;
     public binpath = '';
     public homepath = '';
     public scriptpath = '';
@@ -101,21 +134,45 @@ export class RInstallation {
     public orthogonal = true;
     public default = false;
     public source: RInstallationSource = 'system';
+    public retPayload: NativeREnvInfo | undefined = undefined;
+    public manager: REnvManagerInfo | undefined = undefined;
+    public knownExecutables: string[] | undefined = undefined;
+    public symlinks: string[] | undefined = undefined;
+    public discoveredBy: NativeDiscoverySource[] | null = null;
+    public locatorMetadata: LocatorMetadata | undefined = undefined;
+    public rversionsOverlay: RVersionsOverlay | undefined = undefined;
+    public startupCommand: string | undefined = undefined;
+    public environmentVariables: Record<string, string> | undefined = undefined;
     public packagerMetadata: PackagerMetadata | undefined = undefined;
 
     constructor(options: RInstallationOptions) {
+        this.displayName = options.displayName;
+        this.name = options.name;
         this.binpath = options.binpath;
         this.homepath = options.homepath;
-        this.scriptpath = inferRScriptPath(options.binpath);
+        this.scriptpath = options.scriptPath ?? inferRScriptPath(options.binpath);
         this.semVersion = semver.coerce(options.version) ?? new semver.SemVer('0.0.1');
         this.version = this.semVersion.format();
         this.arch = options.arch ?? '';
         this.current = options.current ?? false;
         this.source = options.source ?? 'system';
-        this.reasonDiscovered = options.reasonDiscovered ?? null;
-        this.packagerMetadata = options.packagerMetadata;
+        this.retPayload = options.retPayload;
+        this.reasonDiscovered = options.reasonDiscovered ? [...options.reasonDiscovered] : null;
+        this.discoveredBy = options.discoveredBy ? [...options.discoveredBy] : null;
+        this.manager = options.manager;
+        this.knownExecutables = options.knownExecutables ? [...options.knownExecutables] : undefined;
+        this.symlinks = options.symlinks ? [...options.symlinks] : undefined;
+        this.locatorMetadata = options.locatorMetadata;
+        this.rversionsOverlay = options.rversionsOverlay;
+        this.startupCommand = options.startupCommand;
+        this.environmentVariables = options.environmentVariables
+            ? { ...options.environmentVariables }
+            : undefined;
+        this.packagerMetadata =
+            options.packagerMetadata ??
+            convertLocatorMetadataToPackagerMetadata(options.locatorMetadata);
         this.default = isConfiguredDefaultRPath(options.binpath);
-        this.orthogonal = computeOrthogonality(options.homepath);
+        this.orthogonal = options.orthogonal ?? computeOrthogonality(options.homepath);
         this.supported = options.supported ?? true;
         this.reasonRejected = options.reasonRejected ?? null;
         this.usable = options.usable ?? true;
@@ -168,6 +225,8 @@ export function friendlyReason(reason: ReasonDiscovered | ReasonRejected | null)
             return 'Found via Spack';
         case ReasonDiscovered.RIG:
             return 'Found via rig';
+        case ReasonDiscovered.RVERSIONS:
+            return 'Matched by r-versions';
         case ReasonDiscovered.WINDOWS_HQ:
             return 'Found in the Windows R installation directory';
         case ReasonDiscovered.WINDOWS_REGISTRY:
@@ -210,11 +269,23 @@ const RET_KIND_TO_DISCOVERY_REASON: Record<string, ReasonDiscovered> = {
     GlobalPaths: ReasonDiscovered.PATH,
 };
 
-export function getReasonDiscoveredFromRetKind(kind?: string): ReasonDiscovered {
-    return RET_KIND_TO_DISCOVERY_REASON[kind ?? ''] ?? ReasonDiscovered.HQ;
+const RET_DISCOVERY_SOURCE_TO_REASON: Partial<Record<NativeDiscoverySource, ReasonDiscovered>> = {
+    rVersions: ReasonDiscovered.RVERSIONS,
+};
+
+export function getReasonDiscoveredFromRetKind(kind?: string): ReasonDiscovered | undefined {
+    return kind ? RET_KIND_TO_DISCOVERY_REASON[kind] : undefined;
 }
 
 export function formatRuntimeName(installation: RInstallation): string {
+    if (installation.rversionsOverlay?.label) {
+        return installation.rversionsOverlay.label;
+    }
+
+    if (installation.displayName) {
+        return installation.displayName;
+    }
+
     let name = `R ${installation.version}`;
 
     if (installation.packagerMetadata) {
@@ -225,7 +296,7 @@ export function formatRuntimeName(installation: RInstallation): string {
             if (environmentName) {
                 name += ` (Pixi: ${environmentName})`;
             }
-        } else {
+        } else if (isCondaMetadata(installation.packagerMetadata)) {
             name += ` (Conda: ${path.basename(installation.packagerMetadata.environmentPath)})`;
         }
     } else if (installation.reasonDiscovered?.includes(ReasonDiscovered.HOMEBREW)) {
@@ -235,65 +306,172 @@ export function formatRuntimeName(installation: RInstallation): string {
     return name;
 }
 
+export function convertLocatorMetadataToPackagerMetadata(
+    locatorMetadata?: LocatorMetadata,
+): PackagerMetadata | undefined {
+    if (!locatorMetadata) {
+        return undefined;
+    }
+
+    switch (locatorMetadata.type) {
+        case 'conda':
+            return {
+                kind: 'conda',
+                environmentPath: locatorMetadata.environmentPath,
+            };
+        case 'pixi':
+            return {
+                kind: 'pixi',
+                environmentPath: locatorMetadata.environmentPath,
+                manifestPath: locatorMetadata.manifestPath ?? undefined,
+                environmentName: locatorMetadata.environmentName ?? undefined,
+            };
+        case 'module':
+            return {
+                kind: 'module',
+                moduleName: locatorMetadata.moduleName,
+                startupCommand: locatorMetadata.startupCommand,
+            };
+    }
+}
+
+export function convertPackagerMetadataToLocatorMetadata(
+    packagerMetadata?: PackagerMetadata,
+): LocatorMetadata | undefined {
+    if (!packagerMetadata) {
+        return undefined;
+    }
+
+    if (isCondaMetadata(packagerMetadata)) {
+        return {
+            type: 'conda',
+            environmentPath: packagerMetadata.environmentPath,
+        };
+    }
+
+    if (isPixiMetadata(packagerMetadata)) {
+        return {
+            type: 'pixi',
+            environmentPath: packagerMetadata.environmentPath,
+            manifestPath: packagerMetadata.manifestPath ?? null,
+            environmentName: packagerMetadata.environmentName ?? null,
+        };
+    }
+
+    return {
+        type: 'module',
+        moduleName: packagerMetadata.moduleName,
+        startupCommand: packagerMetadata.startupCommand,
+    };
+}
+
+function getRetKindFromPackagerMetadata(
+    packagerMetadata?: PackagerMetadata,
+): NativeREnvInfo['kind'] | undefined {
+    if (!packagerMetadata) {
+        return undefined;
+    }
+
+    if (isCondaMetadata(packagerMetadata)) {
+        return 'Conda';
+    }
+
+    if (isPixiMetadata(packagerMetadata)) {
+        return 'Pixi';
+    }
+
+    return 'EnvironmentModule';
+}
+
+function getRetArchitecture(arch?: string): NativeREnvInfo['arch'] | undefined {
+    switch (arch) {
+        case 'aarch64':
+        case 'arm64':
+            return 'arm64';
+        case 'x86_64':
+            return 'x86_64';
+        case 'x86':
+            return 'x86';
+        default:
+            return undefined;
+    }
+}
+
+function createRetPayloadFromInstallation(installation: RInstallation): NativeREnvInfo {
+    if (installation.retPayload) {
+        return {
+            ...installation.retPayload,
+            manager: installation.retPayload.manager ? { ...installation.retPayload.manager } : undefined,
+            knownExecutables: installation.retPayload.knownExecutables
+                ? [...installation.retPayload.knownExecutables]
+                : undefined,
+            symlinks: installation.retPayload.symlinks
+                ? [...installation.retPayload.symlinks]
+                : undefined,
+            discoveredBy: installation.retPayload.discoveredBy
+                ? [...installation.retPayload.discoveredBy]
+                : undefined,
+            locatorMetadata: installation.retPayload.locatorMetadata
+                ? { ...installation.retPayload.locatorMetadata }
+                : undefined,
+            rversionsOverlay: installation.retPayload.rversionsOverlay
+                ? { ...installation.retPayload.rversionsOverlay }
+                : undefined,
+            environmentVariables: installation.retPayload.environmentVariables
+                ? { ...installation.retPayload.environmentVariables }
+                : undefined,
+        };
+    }
+
+    const locatorMetadata =
+        installation.locatorMetadata ??
+        convertPackagerMetadataToLocatorMetadata(installation.packagerMetadata);
+
+    return {
+        displayName: installation.displayName,
+        name: installation.name,
+        executable: installation.binpath,
+        kind: getRetKindFromPackagerMetadata(installation.packagerMetadata),
+        version: installation.version,
+        home: installation.homepath,
+        manager: installation.manager ? { ...installation.manager } : undefined,
+        arch: getRetArchitecture(installation.arch),
+        knownExecutables: installation.knownExecutables ? [...installation.knownExecutables] : undefined,
+        symlinks: installation.symlinks ? [...installation.symlinks] : undefined,
+        discoveredBy: installation.discoveredBy ? [...installation.discoveredBy] : undefined,
+        locatorMetadata,
+        rversionsOverlay: installation.rversionsOverlay ? { ...installation.rversionsOverlay } : undefined,
+        scriptPath: installation.scriptpath,
+        startupCommand: installation.startupCommand,
+        environmentVariables: installation.environmentVariables
+            ? { ...installation.environmentVariables }
+            : undefined,
+        orthogonal: installation.orthogonal,
+    };
+}
+
 export function getMetadataExtra(installation: RInstallation): RMetadataExtra {
-    const metadata: RMetadataExtra = {
+    return {
         homepath: installation.homepath,
         binpath: installation.binpath,
         scriptpath: installation.scriptpath,
         arch: installation.arch || undefined,
         current: installation.current,
         default: installation.default,
+        retPayload: createRetPayloadFromInstallation(installation),
         reasonDiscovered: installation.reasonDiscovered ?? null,
-        packagerMetadata: installation.packagerMetadata,
     };
-
-    if (installation.packagerMetadata && isCondaMetadata(installation.packagerMetadata)) {
-        metadata.condaEnvPath = installation.packagerMetadata.environmentPath;
-        metadata.envName = path.basename(installation.packagerMetadata.environmentPath);
-    }
-
-    return metadata;
 }
 
-export function restorePackagerMetadata(extraRuntimeData: {
-    packagerMetadata?: PackagerMetadata | {
-        environmentPath: string;
-        manifestPath?: string;
-        environmentName?: string;
-    };
-    condaEnvPath?: string;
-    envName?: string;
+export interface PersistedRMetadataExtra {
+    homepath?: string;
     binpath?: string;
-}): PackagerMetadata | undefined {
-    if (extraRuntimeData.packagerMetadata) {
-        if ('kind' in extraRuntimeData.packagerMetadata) {
-            return extraRuntimeData.packagerMetadata;
-        }
-
-        if ('manifestPath' in extraRuntimeData.packagerMetadata) {
-            return {
-                kind: 'pixi',
-                environmentPath: extraRuntimeData.packagerMetadata.environmentPath,
-                manifestPath: extraRuntimeData.packagerMetadata.manifestPath,
-                environmentName: extraRuntimeData.packagerMetadata.environmentName,
-            };
-        }
-
-        return {
-            kind: 'conda',
-            environmentPath: extraRuntimeData.packagerMetadata.environmentPath,
-        };
-    }
-
-    if (extraRuntimeData.condaEnvPath) {
-        return { kind: 'conda', environmentPath: extraRuntimeData.condaEnvPath };
-    }
-
-    if (extraRuntimeData.binpath) {
-        return inferPackagerMetadataFromRBinary(extraRuntimeData.binpath);
-    }
-
-    return undefined;
+    scriptpath?: string;
+    arch?: string;
+    current?: boolean;
+    default?: boolean;
+    retPayload?: NativeREnvInfo;
+    reasonDiscovered?: ReasonDiscovered[] | null;
 }
 
 export function convertNativeEnvToRInstallation(env: NativeREnvInfo): RInstallation | undefined {
@@ -301,18 +479,54 @@ export function convertNativeEnvToRInstallation(env: NativeREnvInfo): RInstallat
         return undefined;
     }
 
-    const reasonDiscovered = getReasonDiscoveredFromRetKind(env.kind);
+    const locatorMetadata = getLocatorMetadataFromNativeEnv(env);
     const packagerMetadata = getPackagerMetadataFromNativeEnv(env);
+    const reasonDiscovered = getReasonsDiscoveredFromNativeEnv(env, packagerMetadata);
 
     return new RInstallation({
+        displayName: env.displayName ?? undefined,
+        name: env.name ?? undefined,
         binpath: env.executable,
         homepath: env.home,
         version: env.version,
         arch: normalizeArch(env.arch),
         current: false,
-        source: getSourceFromDiscoveryReason(reasonDiscovered),
-        reasonDiscovered: [reasonDiscovered],
+        source: getSourceFromPackagerMetadata(packagerMetadata) ?? getSourceFromDiscoveryReason(reasonDiscovered[0]),
+        retPayload: {
+            ...env,
+            displayName: env.displayName ?? undefined,
+            name: env.name ?? undefined,
+            executable: env.executable,
+            kind: env.kind ?? undefined,
+            version: env.version,
+            home: env.home,
+            manager: env.manager ? { ...env.manager } : undefined,
+            arch: env.arch ?? undefined,
+            knownExecutables: env.knownExecutables ? [...env.knownExecutables] : undefined,
+            symlinks: env.symlinks ? [...env.symlinks] : undefined,
+            discoveredBy: env.discoveredBy ? [...env.discoveredBy] : undefined,
+            locatorMetadata: env.locatorMetadata,
+            rversionsOverlay: env.rversionsOverlay ? { ...env.rversionsOverlay } : undefined,
+            scriptPath: env.scriptPath ?? undefined,
+            startupCommand: env.startupCommand ?? undefined,
+            environmentVariables: env.environmentVariables
+                ? { ...env.environmentVariables }
+                : undefined,
+            orthogonal: env.orthogonal ?? undefined,
+            error: env.error ?? undefined,
+        },
+        reasonDiscovered,
+        discoveredBy: env.discoveredBy ?? null,
+        manager: env.manager,
+        knownExecutables: env.knownExecutables,
+        symlinks: env.symlinks,
         packagerMetadata,
+        locatorMetadata,
+        rversionsOverlay: env.rversionsOverlay,
+        scriptPath: env.scriptPath,
+        startupCommand: env.startupCommand,
+        environmentVariables: env.environmentVariables,
+        orthogonal: env.orthogonal,
     });
 }
 
@@ -371,9 +585,10 @@ export async function probeRInstallation(
         version,
         arch,
         current: false,
-        source: getSourceFromDiscoveryReason(resolvedReasonDiscovered?.[0]),
+        source: getSourceFromPackagerMetadata(resolvedPackagerMetadata) ?? getSourceFromDiscoveryReason(resolvedReasonDiscovered?.[0]),
         reasonDiscovered: resolvedReasonDiscovered,
         packagerMetadata: resolvedPackagerMetadata,
+        locatorMetadata: convertPackagerMetadataToLocatorMetadata(resolvedPackagerMetadata),
     });
 }
 
@@ -384,21 +599,6 @@ export function inferPackagerMetadataFromRBinary(rBinPath: string): PackagerMeta
     }
 
     return undefined;
-}
-
-export function inferCondaEnvironmentFromRBinary(rBinPath: string): {
-    condaEnvPath?: string;
-    envName?: string;
-} {
-    const condaEnvPath = inferCondaEnvironmentPathFromRBinary(rBinPath);
-    if (!condaEnvPath) {
-        return {};
-    }
-
-    return {
-        condaEnvPath,
-        envName: path.basename(condaEnvPath),
-    };
 }
 
 function getSourceFromDiscoveryReason(reason?: ReasonDiscovered): RInstallationSource {
@@ -416,7 +616,30 @@ function getSourceFromDiscoveryReason(reason?: ReasonDiscovered): RInstallationS
     }
 }
 
+function getSourceFromPackagerMetadata(
+    packagerMetadata?: PackagerMetadata,
+): RInstallationSource | undefined {
+    if (!packagerMetadata) {
+        return undefined;
+    }
+
+    if (isCondaMetadata(packagerMetadata)) {
+        return 'conda';
+    }
+
+    if (isPixiMetadata(packagerMetadata)) {
+        return 'pixi';
+    }
+
+    return undefined;
+}
+
 export function getPackagerMetadataFromNativeEnv(env: NativeREnvInfo): PackagerMetadata | undefined {
+    const locatorMetadata = getLocatorMetadataFromNativeEnv(env);
+    if (locatorMetadata) {
+        return convertLocatorMetadataToPackagerMetadata(locatorMetadata);
+    }
+
     if (!env.executable) {
         return undefined;
     }
@@ -440,6 +663,65 @@ export function getPackagerMetadataFromNativeEnv(env: NativeREnvInfo): PackagerM
     }
 
     return undefined;
+}
+
+export function getLocatorMetadataFromNativeEnv(env: NativeREnvInfo): LocatorMetadata | undefined {
+    if (env.locatorMetadata) {
+        return env.locatorMetadata;
+    }
+
+    if (!env.executable) {
+        return undefined;
+    }
+
+    if (env.kind === 'Conda') {
+        const environmentPath = inferCondaEnvironmentPathFromRBinary(env.executable);
+        if (environmentPath) {
+            return {
+                type: 'conda',
+                environmentPath,
+            };
+        }
+    }
+
+    if (env.kind === 'Pixi') {
+        const environmentPath = inferEnvironmentPathFromRBinary(env.executable);
+        if (environmentPath) {
+            return {
+                type: 'pixi',
+                environmentPath,
+                manifestPath: null,
+                environmentName: env.name ?? null,
+            };
+        }
+    }
+
+    return undefined;
+}
+
+function getReasonsDiscoveredFromNativeEnv(
+    env: NativeREnvInfo,
+    _packagerMetadata?: PackagerMetadata,
+): ReasonDiscovered[] {
+    const reasons: ReasonDiscovered[] = [];
+    const primaryReason = getReasonDiscoveredFromRetKind(env.kind);
+
+    if (primaryReason) {
+        reasons.push(primaryReason);
+    }
+
+    for (const source of env.discoveredBy ?? []) {
+        const reason = RET_DISCOVERY_SOURCE_TO_REASON[source];
+        if (reason && !reasons.includes(reason)) {
+            reasons.push(reason);
+        }
+    }
+
+    if (reasons.length === 0) {
+        reasons.push(ReasonDiscovered.HQ);
+    }
+
+    return reasons;
 }
 
 function inferEnvironmentPathFromRBinary(rBinPath: string): string | undefined {
@@ -467,7 +749,15 @@ function inferReasonDiscoveredFromRBinary(
     packagerMetadata?: PackagerMetadata,
 ): ReasonDiscovered[] | null {
     if (packagerMetadata) {
-        return [isPixiMetadata(packagerMetadata) ? ReasonDiscovered.PIXI : ReasonDiscovered.CONDA];
+        if (isPixiMetadata(packagerMetadata)) {
+            return [ReasonDiscovered.PIXI];
+        }
+
+        if (isCondaMetadata(packagerMetadata)) {
+            return [ReasonDiscovered.CONDA];
+        }
+
+        return [ReasonDiscovered.MODULE];
     }
 
     if (isRBinaryOnPath(rBinPath)) {

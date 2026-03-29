@@ -3,7 +3,7 @@ import * as path from 'path';
 import * as vscode from 'vscode';
 import { execSync } from 'child_process';
 import type { JupyterKernelSpec } from '../types/supervisor-api';
-import { findCondaExe } from './provider-conda';
+import { resolveCondaCommand } from './conda';
 import { getArkEnvironmentVariables, getArkKernelPath } from './kernel';
 import {
     formatRuntimeName,
@@ -63,11 +63,11 @@ async function captureCondaEnvVarsWindows(
     rBinaryPath: string,
     environmentPath: string,
     environmentName: string,
+    condaCommand: string | undefined,
     log: vscode.LogOutputChannel,
 ): Promise<void> {
-    const condaExe = findCondaExe(environmentPath);
-    if (!condaExe) {
-        log.error(`Could not find conda.exe for environment: ${environmentPath}`);
+    if (!condaCommand) {
+        log.error(`Could not resolve a conda command for environment: ${environmentPath}`);
         setSpeculativeCondaEnvVars(env, environmentPath);
         return;
     }
@@ -75,7 +75,7 @@ async function captureCondaEnvVarsWindows(
     let cancelled = false;
     const activationPromise = new Promise<void>((resolve) => {
         try {
-            const command = `"${condaExe}" shell.cmd.exe activate ${environmentName}`;
+            const command = `"${condaCommand}" shell.cmd.exe activate ${environmentName}`;
             log.debug(`Running to capture Conda variables: ${command}`);
             const scriptPath = execSync(command, { encoding: 'utf8', timeout: 10000 }).trim();
 
@@ -117,7 +117,7 @@ async function captureCondaEnvVarsWindows(
             if (error?.stderr) {
                 log.error(`stderr: ${error.stderr}`);
             }
-            setSpeculativeCondaEnvVars(env, environmentPath, condaExe);
+            setSpeculativeCondaEnvVars(env, environmentPath, condaCommand);
         } finally {
             resolve();
         }
@@ -184,18 +184,48 @@ export async function createJupyterKernelSpec(
         ...userEnv,
     };
 
-    let startup_command: string | undefined;
-    if (rInstallation.packagerMetadata && isCondaMetadata(rInstallation.packagerMetadata)) {
+    if (rInstallation.environmentVariables) {
+        Object.assign(env, rInstallation.environmentVariables);
+        log.info('Using RET-provided environment variables');
+    }
+
+    const hasRetEnvironmentVariables = !!rInstallation.environmentVariables &&
+        Object.keys(rInstallation.environmentVariables).length > 0;
+    let startup_command: string | undefined = rInstallation.startupCommand;
+
+    if (startup_command) {
+        log.info(`Using RET startup command: ${startup_command}`);
+    }
+
+    if (
+        !startup_command &&
+        !hasRetEnvironmentVariables &&
+        rInstallation.packagerMetadata &&
+        isCondaMetadata(rInstallation.packagerMetadata)
+    ) {
         const environmentPath = rInstallation.packagerMetadata.environmentPath;
         const environmentName = path.basename(environmentPath);
+        const condaCommand = resolveCondaCommand(rInstallation);
 
         if (process.platform === 'win32') {
-            await captureCondaEnvVarsWindows(env, rInstallation.binpath, environmentPath, environmentName, log);
+            await captureCondaEnvVarsWindows(
+                env,
+                rInstallation.binpath,
+                environmentPath,
+                environmentName,
+                condaCommand,
+                log,
+            );
         } else {
             startup_command = `conda activate ${environmentPath}`;
             log.info(`Using conda activation: ${startup_command}`);
         }
-    } else if (rInstallation.packagerMetadata && isPixiMetadata(rInstallation.packagerMetadata)) {
+    } else if (
+        !startup_command &&
+        !hasRetEnvironmentVariables &&
+        rInstallation.packagerMetadata &&
+        isPixiMetadata(rInstallation.packagerMetadata)
+    ) {
         setPixiEnvironmentVariables(env, rInstallation.packagerMetadata.environmentPath);
         log.info(`Using direct Pixi environment variables: ${rInstallation.packagerMetadata.environmentPath}`);
     }

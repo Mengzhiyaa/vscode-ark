@@ -4,6 +4,13 @@ import * as path from 'path';
 import { PassThrough } from 'stream';
 import * as vscode from 'vscode';
 import * as rpc from 'vscode-jsonrpc/node';
+import type {
+    DiscoverySource as RetDiscoverySource,
+    EnvManager as RetEnvManagerInfo,
+    LocatorMetadata as RetLocatorMetadata,
+    RInstallation as RetRInstallation,
+    RVersionsOverlay as RetRVersionsOverlay,
+} from '../generated/ret-protocol';
 
 const isWindows = process.platform === 'win32';
 
@@ -25,28 +32,96 @@ function resolveRetPath(extensionPath: string): string | undefined {
     return undefined;
 }
 
-export interface NativeREnvInfo {
-    displayName?: string;
-    name?: string;
-    executable?: string;
-    kind?: string;
-    version?: string;
-    home?: string;
-    manager?: NativeREnvManagerInfo;
-    arch?: string;
-    symlinks?: string[];
-    error?: string;
-}
+type OptionalPayload<T> = {
+    [K in keyof T]?: Exclude<T[K], null>;
+};
 
-export interface NativeREnvManagerInfo {
-    tool: string;
-    executable: string;
-    version?: string;
-}
+export type NativeDiscoverySource = RetDiscoverySource;
+export type NativeREnvManagerInfo = OptionalPayload<RetEnvManagerInfo>;
+export type NativeREnvLocatorMetadata = RetLocatorMetadata;
+export type NativeREnvRVersionsOverlay = OptionalPayload<RetRVersionsOverlay>;
+export type NativeREnvInfo = Omit<
+    OptionalPayload<RetRInstallation>,
+    'manager' | 'locatorMetadata' | 'rversionsOverlay' | 'discoveredBy' | 'environmentVariables'
+> & {
+    manager?: NativeREnvManagerInfo;
+    locatorMetadata?: NativeREnvLocatorMetadata;
+    rversionsOverlay?: NativeREnvRVersionsOverlay;
+    discoveredBy?: NativeDiscoverySource[];
+    environmentVariables?: Record<string, string>;
+};
 
 interface NativeLog {
     level: string;
     message: string;
+}
+
+function normalizeNativeManager(
+    manager: RetEnvManagerInfo | null | undefined,
+): NativeREnvManagerInfo | undefined {
+    if (!manager) {
+        return undefined;
+    }
+
+    return {
+        tool: manager.tool,
+        executable: manager.executable,
+        version: manager.version ?? undefined,
+    };
+}
+
+function normalizeNativeRVersionsOverlay(
+    overlay: RetRVersionsOverlay | null | undefined,
+): NativeREnvRVersionsOverlay | undefined {
+    if (!overlay) {
+        return undefined;
+    }
+
+    return {
+        label: overlay.label ?? undefined,
+        script: overlay.script ?? undefined,
+        repo: overlay.repo ?? undefined,
+        library: overlay.library ?? undefined,
+        module: overlay.module ?? undefined,
+        moduleStartupCommand: overlay.moduleStartupCommand ?? undefined,
+    };
+}
+
+function normalizeEnvironmentVariables(
+    environmentVariables: RetRInstallation['environmentVariables'],
+): Record<string, string> | undefined {
+    if (!environmentVariables) {
+        return undefined;
+    }
+
+    const normalized = Object.fromEntries(
+        Object.entries(environmentVariables).filter((entry) => entry[1] !== undefined),
+    ) as Record<string, string>;
+
+    return Object.keys(normalized).length > 0 ? normalized : undefined;
+}
+
+function normalizeNativeREnvInfo(env: RetRInstallation): NativeREnvInfo {
+    return {
+        displayName: env.displayName ?? undefined,
+        name: env.name ?? undefined,
+        executable: env.executable ?? undefined,
+        kind: env.kind ?? undefined,
+        version: env.version ?? undefined,
+        home: env.home ?? undefined,
+        manager: normalizeNativeManager(env.manager),
+        arch: env.arch ?? undefined,
+        knownExecutables: env.knownExecutables ?? undefined,
+        symlinks: env.symlinks ?? undefined,
+        discoveredBy: env.discoveredBy ?? undefined,
+        locatorMetadata: env.locatorMetadata ?? undefined,
+        rversionsOverlay: normalizeNativeRVersionsOverlay(env.rversionsOverlay),
+        scriptPath: env.scriptPath ?? undefined,
+        startupCommand: env.startupCommand ?? undefined,
+        environmentVariables: normalizeEnvironmentVariables(env.environmentVariables),
+        orthogonal: env.orthogonal ?? undefined,
+        error: env.error ?? undefined,
+    };
 }
 
 interface ConfigurationOptions {
@@ -83,7 +158,7 @@ class NativeRFinderImpl implements NativeRFinder {
         const retPath = resolveRetPath(extensionPath);
         if (!retPath) {
             this.outputChannel.info(
-                '[NativeRFinder] RET binary not found. Native R discovery unavailable; using TypeScript fallback.'
+                '[NativeRFinder] RET binary not found. Native R discovery unavailable.'
             );
             this.available = false;
             return;
@@ -104,7 +179,8 @@ class NativeRFinderImpl implements NativeRFinder {
         }
 
         await this.configure();
-        return this.connection.sendRequest<NativeREnvInfo>('resolve', { executable });
+        const result = await this.connection.sendRequest<RetRInstallation>('resolve', { executable });
+        return normalizeNativeREnvInfo(result);
     }
 
     async *refresh(): AsyncIterable<NativeREnvInfo> {
@@ -274,11 +350,12 @@ class NativeRFinderImpl implements NativeRFinder {
         const environments: NativeREnvInfo[] = [];
         const disposable = this.connection.onNotification(
             'installation',
-            (data: NativeREnvInfo) => {
+            (data: RetRInstallation) => {
+                const environment = normalizeNativeREnvInfo(data);
                 this.outputChannel.info(
-                    `[NativeRFinder] Discovered: ${data.executable || data.home || '(unknown)'}`
+                    `[NativeRFinder] Discovered: ${environment.executable || environment.home || '(unknown)'}`
                 );
-                environments.push(data);
+                environments.push(environment);
             },
         );
 
@@ -314,12 +391,13 @@ class NativeRFinderImpl implements NativeRFinder {
             }
 
             try {
-                const resolvedEnvironment = await this.connection.sendRequest<NativeREnvInfo>(
+                const resolvedEnvironment = await this.connection.sendRequest<RetRInstallation>(
                     'resolve',
                     { executable: environment.executable },
                 );
-                if (resolvedEnvironment.executable && resolvedEnvironment.version && resolvedEnvironment.home) {
-                    resolvedEnvironments.push(resolvedEnvironment);
+                const normalized = normalizeNativeREnvInfo(resolvedEnvironment);
+                if (normalized.executable && normalized.version && normalized.home) {
+                    resolvedEnvironments.push(normalized);
                 }
             } catch (error) {
                 this.outputChannel.warn(

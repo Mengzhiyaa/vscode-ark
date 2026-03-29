@@ -82,13 +82,15 @@ const BINARY_CONFIGS = {
         repo: 'posit-dev/ark',
         binaryName: (platform) => platform.startsWith('windows') ? 'ark.exe' : 'ark',
         archivePattern: (version, platform) => `ark-${version}-${platform}.zip`,
+        archiveType: 'zip',
         installDir: 'resources/ark',
         platformOverride: (platform) => platform.startsWith('darwin') ? 'darwin-universal' : platform,
     },
     ret: {
         repo: 'Mengzhiyaa/r-environment-tools',
         binaryName: (platform) => platform.startsWith('windows') ? 'ret.exe' : 'ret',
-        archivePattern: (version, platform) => `ret-${version}-${platform}.zip`,
+        archivePattern: (version, platform) => `ret-${version}-${platform}.tar.gz`,
+        archiveType: 'tar.gz',
         installDir: 'resources/ret',
         platformOverride: undefined,
     },
@@ -130,17 +132,27 @@ function download(url, destination) {
     });
 }
 
-function extractZip(zipPath, destination) {
+function extractArchive(archivePath, archiveType, destination) {
     fs.mkdirSync(destination, { recursive: true });
-    if (process.platform === 'win32') {
-        execSync(
-            `powershell -NoProfile -Command "Expand-Archive -Path '${zipPath}' -DestinationPath '${destination}' -Force"`,
-            { stdio: 'pipe' },
-        );
-        return;
-    }
 
-    execSync(`unzip -o -q "${zipPath}" -d "${destination}"`, { stdio: 'pipe' });
+    switch (archiveType) {
+        case 'zip':
+            if (process.platform === 'win32') {
+                execSync(
+                    `powershell -NoProfile -Command "Expand-Archive -Path '${archivePath}' -DestinationPath '${destination}' -Force"`,
+                    { stdio: 'pipe' },
+                );
+                return;
+            }
+
+            execSync(`unzip -o -q "${archivePath}" -d "${destination}"`, { stdio: 'pipe' });
+            return;
+        case 'tar.gz':
+            execSync(`tar -xzf "${archivePath}" -C "${destination}"`, { stdio: 'pipe' });
+            return;
+        default:
+            throw new Error(`Unsupported archive type: ${archiveType}`);
+    }
 }
 
 function findFile(rootDir, filename) {
@@ -177,7 +189,7 @@ async function installBinary(name, config, version, platform) {
         console.log(`Installing ${name} ${version} for ${platform}`);
         console.log(`Downloading ${downloadUrl}`);
         await download(downloadUrl, archivePath);
-        extractZip(archivePath, extractDir);
+        extractArchive(archivePath, config.archiveType, extractDir);
 
         const extractedBinary = findFile(extractDir, executableName);
         if (!extractedBinary) {

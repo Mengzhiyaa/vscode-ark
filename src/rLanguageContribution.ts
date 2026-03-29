@@ -36,10 +36,11 @@ import {
 } from './runtime/provider';
 import { setNativeRFinder } from './runtime/provider-ret';
 import {
+    convertNativeEnvToRInstallation,
     getMetadataExtra,
     isPixiMetadata,
+    type PersistedRMetadataExtra,
     RInstallation,
-    restorePackagerMetadata,
     type RInstallationSource,
 } from './runtime/r-installation';
 import { getNativeRFinder } from './runtime/native-r-finder';
@@ -74,53 +75,103 @@ function createRuntimeId(binpath: string, version: string): string {
     return digest.digest('hex').substring(0, 32);
 }
 
-export function restoreRInstallationFromMetadata(
-    metadata: LanguageRuntimeMetadata
-): RInstallation | undefined {
-    const extraRuntimeData = metadata.extraRuntimeData as {
-        homepath?: string;
-        binpath?: string;
-        scriptpath?: string;
-        arch?: string;
-        current?: boolean;
-        default?: boolean;
-        reasonDiscovered?: RInstallation['reasonDiscovered'];
-        packagerMetadata?: RInstallation['packagerMetadata'];
-        condaEnvPath?: string;
-        envName?: string;
-    } | undefined;
+function normalizeRuntimeSource(
+    source: LanguageRuntimeMetadata['runtimeSource'],
+): RInstallationSource {
+    return source === 'configured' || source === 'conda' || source === 'path' || source === 'system' || source === 'pixi'
+        ? source
+        : 'system';
+}
 
-    const homepath = extraRuntimeData?.homepath;
+function getStoredCurrent(
+    metadata: LanguageRuntimeMetadata,
+    extraRuntimeData: PersistedRMetadataExtra | undefined,
+): boolean {
+    return extraRuntimeData?.current ?? metadata.startupBehavior === RUNTIME_STARTUP_BEHAVIOR.Immediate;
+}
+
+function getSourceFromStoredMetadata(
+    installation: Pick<RInstallation, 'packagerMetadata'>,
+    fallbackSource: RInstallationSource,
+): RInstallationSource {
+    if (!installation.packagerMetadata) {
+        return fallbackSource;
+    }
+
+    if (isPixiMetadata(installation.packagerMetadata)) {
+        return 'pixi';
+    }
+
+    return installation.packagerMetadata.kind === 'conda' ? 'conda' : fallbackSource;
+}
+
+function restoreRetInstallationFromMetadata(
+    metadata: LanguageRuntimeMetadata,
+    extraRuntimeData: PersistedRMetadataExtra,
+    normalizedSource: RInstallationSource,
+): RInstallation | undefined {
+    if (!extraRuntimeData.retPayload) {
+        return undefined;
+    }
+
+    const restored = convertNativeEnvToRInstallation(extraRuntimeData.retPayload);
+    if (!restored) {
+        return undefined;
+    }
+
+    restored.current = getStoredCurrent(metadata, extraRuntimeData);
+    restored.default = extraRuntimeData.default ?? restored.default;
+    restored.source = getSourceFromStoredMetadata(restored, normalizedSource);
+    restored.reasonDiscovered = extraRuntimeData.reasonDiscovered ?? restored.reasonDiscovered;
+    return restored;
+}
+
+function restoreBasicInstallationFromMetadata(
+    metadata: LanguageRuntimeMetadata,
+    extraRuntimeData: PersistedRMetadataExtra,
+    normalizedSource: RInstallationSource,
+): RInstallation | undefined {
+    const homepath = extraRuntimeData.homepath;
     if (!homepath) {
         return undefined;
     }
 
-    const binpath = extraRuntimeData?.binpath ?? metadata.runtimePath;
-    const source = metadata.runtimeSource;
-    const normalizedSource: RInstallationSource =
-        source === 'configured' || source === 'conda' || source === 'path' || source === 'system' || source === 'pixi'
-            ? source
-            : 'system';
-    const packagerMetadata = restorePackagerMetadata({
-        packagerMetadata: extraRuntimeData?.packagerMetadata,
-        condaEnvPath: extraRuntimeData?.condaEnvPath,
-        envName: extraRuntimeData?.envName,
-        binpath,
-    });
-    const sourceFromMetadata = packagerMetadata
-        ? (isPixiMetadata(packagerMetadata) ? 'pixi' : 'conda')
-        : normalizedSource;
-
-    return new RInstallation({
-        binpath,
+    const restored = new RInstallation({
+        binpath: extraRuntimeData.binpath ?? metadata.runtimePath,
         homepath,
         version: metadata.languageVersion,
-        arch: extraRuntimeData?.arch,
-        current: metadata.startupBehavior === RUNTIME_STARTUP_BEHAVIOR.Immediate,
-        source: sourceFromMetadata,
-        reasonDiscovered: extraRuntimeData?.reasonDiscovered ?? null,
-        packagerMetadata,
+        arch: extraRuntimeData.arch,
+        current: getStoredCurrent(metadata, extraRuntimeData),
+        source: normalizedSource,
+        reasonDiscovered: extraRuntimeData.reasonDiscovered ?? null,
+        scriptPath: extraRuntimeData.scriptpath,
     });
+    restored.default = extraRuntimeData.default ?? restored.default;
+    return restored;
+}
+
+export function restoreRInstallationFromMetadata(
+    metadata: LanguageRuntimeMetadata
+): RInstallation | undefined {
+    const extraRuntimeData = metadata.extraRuntimeData as PersistedRMetadataExtra | undefined;
+    const normalizedSource = normalizeRuntimeSource(metadata.runtimeSource);
+
+    if (extraRuntimeData) {
+        const restored = restoreRetInstallationFromMetadata(
+            metadata,
+            extraRuntimeData,
+            normalizedSource,
+        );
+        if (restored) {
+            return restored;
+        }
+    }
+
+    return restoreBasicInstallationFromMetadata(
+        metadata,
+        extraRuntimeData ?? {},
+        normalizedSource,
+    );
 }
 
 export class RLanguageLspFactory implements ILanguageLspFactory {
@@ -165,7 +216,7 @@ export class RLanguageRuntimeProvider implements ILanguageRuntimeProvider<RInsta
         if (finder.available) {
             logChannel.info('[R] Native R Environment Tools (RET) discovery initialized');
         } else {
-            logChannel.info('[R] RET binary not available, using TypeScript discovery fallback');
+            logChannel.info('[R] RET binary not available; automatic discovery disabled');
         }
     }
 

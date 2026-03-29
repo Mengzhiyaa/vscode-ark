@@ -281,7 +281,7 @@ export interface IRuntimeSessionService {
     startNewRuntimeSession(runtimeId: string, sessionName: string, sessionMode: LanguageRuntimeSessionMode, notebookUri: vscode.Uri | undefined, source: string, startMode: RuntimeStartMode, activate: boolean): Promise<string>;
     autoStartRuntime(metadata: LanguageRuntimeMetadata, source: string, activate: boolean): Promise<string>;
     selectRuntime(runtimeId: string, source: string, notebookUri?: vscode.Uri): Promise<void>;
-    focusSession(sessionId: string): void;
+    focusSession(sessionId: string): Promise<void>;
     restartSession(sessionId: string, source: string, interrupt?: boolean): Promise<void>;
     interruptSession(sessionId: string): Promise<void>;
     deleteSession(sessionId: string): Promise<boolean>;

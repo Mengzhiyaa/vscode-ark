@@ -54,6 +54,8 @@
     "check:webview": "npm --prefix webview run check",
     "sync:supervisor-api": "node scripts/sync-supervisor-api.mjs",
     "verify:supervisor-api": "node scripts/sync-supervisor-api.mjs --check",
+    "sync:ret-protocol": "node scripts/sync-ret-protocol.mjs",
+    "verify:ret-protocol": "node scripts/sync-ret-protocol.mjs --check",
     "build": "npm run build:webview && npm run compile",
     "test:prepare": "npm run compile-tests && npm run build",
     "test": "npm run test:prepare && node scripts/run-vscode-tests.mjs --label all",
@@ -64,7 +66,7 @@
   "positron": {
     "binaryDependencies": {
       "ark": "0.1.242",
-      "ret": "0.1.1"
+      "ret": "v0.1.2"
     }
   },
   "contributes": {
@@ -193,12 +195,7 @@
         "ark.r.path": {
           "type": "string",
           "default": "",
-          "description": "Path to R binary (e.g., /usr/local/bin/R). Leave empty for auto-detection."
-        },
-        "ark.r.condaDiscovery": {
-          "type": "boolean",
-          "default": true,
-          "description": "Discover R installations in Conda environments (experimental)."
+          "description": "Path to R binary (e.g., /usr/local/bin/R). Leave empty to use RET-based auto-detection."
         },
         "positron.reticulate.enabled": {
           "type": "string",

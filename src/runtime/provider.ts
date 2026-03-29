@@ -1,10 +1,7 @@
 import * as fs from 'fs';
-import * as os from 'os';
 import * as path from 'path';
 import * as semver from 'semver';
 import * as vscode from 'vscode';
-import { execSync } from 'child_process';
-import { discoverCondaBinaries } from './provider-conda';
 import { discoverRetInstallations, getBestRetInstallation, hasNativeRFinder } from './provider-ret';
 import {
     friendlyReason,
@@ -47,7 +44,7 @@ export async function discoverRInstallations(
     sortInstallations(installations);
 
     if (installations.length === 0) {
-        log.warn('No R installations found. Please install R or configure ark.r.path');
+        log.warn('No R installations found. Configure ark.r.path or make sure RET is available.');
         log.info('You can set ark.r.path in VS Code settings to point to your R binary');
     } else {
         log.debug(`Discovered ${installations.length} R installation(s)`);
@@ -80,15 +77,15 @@ export async function getBestRInstallation(
                 return retInstallation;
             }
 
-            log.warn('[rRuntimeDiscoverer] RET discovery returned no usable R installations, falling back to TypeScript');
+            log.warn('[rRuntimeDiscoverer] RET discovery returned no usable R installations');
         } catch (error) {
             log.warn(`[rRuntimeDiscoverer] RET discovery failed during initial resolution: ${error}`);
         }
     } else {
-        log.info('[rRuntimeDiscoverer] RET not available, using TypeScript discovery');
+        log.info('[rRuntimeDiscoverer] RET not available; automatic discovery disabled');
     }
 
-    return getBestTypeScriptInstallation(log);
+    return undefined;
 }
 
 export async function promptForRPath(
@@ -193,19 +190,17 @@ async function* discoverInstallations(
                 yield installation;
             }
 
-            if (yieldedRetInstallation || hasConfigured) {
-                return;
+            if (!yieldedRetInstallation && !hasConfigured) {
+                log.warn('[rRuntimeDiscoverer] RET discovery returned no usable R installations');
             }
-
-            log.warn('[rRuntimeDiscoverer] RET discovery returned no usable R installations, falling back to TypeScript');
+            return;
         } catch (error) {
-            log.warn(`[rRuntimeDiscoverer] RET discovery failed, falling back to TypeScript: ${error}`);
+            log.warn(`[rRuntimeDiscoverer] RET discovery failed: ${error}`);
+            return;
         }
     } else {
-        log.info('[rRuntimeDiscoverer] RET not available, using TypeScript discovery');
+        log.info('[rRuntimeDiscoverer] RET not available; automatic discovery disabled');
     }
-
-    yield* rRuntimeDiscovererTypescript(log, yieldedPaths, hasCurrent);
 }
 
 function shouldYieldInstallation(
@@ -229,113 +224,6 @@ function sortInstallations(installations: RInstallation[]): void {
 
         return semver.compare(right.semVersion, left.semVersion) || left.arch.localeCompare(right.arch);
     });
-}
-
-async function getBestTypeScriptInstallation(
-    log: vscode.LogOutputChannel,
-): Promise<RInstallation | undefined> {
-    for await (const installation of rRuntimeDiscovererTypescript(log, new Set<string>(), false)) {
-        return installation;
-    }
-
-    return undefined;
-}
-
-async function* rRuntimeDiscovererTypescript(
-    log: vscode.LogOutputChannel,
-    yieldedPaths: Set<string>,
-    hasCurrent: boolean,
-): AsyncGenerator<RInstallation> {
-    log.debug('[rRuntimeDiscoverer] Checking R on PATH...');
-    const pathBinary = findROnPath();
-    if (pathBinary) {
-        const installation = await probeRInstallation(
-            pathBinary,
-            log,
-            [ReasonDiscovered.PATH],
-        );
-        if (installation) {
-            installation.source = 'path';
-            if (!installation.usable) {
-                log.info(`Filtering out ${installation.binpath}, reason: ${friendlyReason(installation.reasonRejected)}`);
-            } else if (shouldYieldInstallation(installation, yieldedPaths)) {
-                if (!hasCurrent) {
-                    installation.current = true;
-                    hasCurrent = true;
-                }
-                log.debug(`[rRuntimeDiscoverer] Yielding R on PATH: ${installation.version}`);
-                yield installation;
-            }
-        }
-    }
-
-    log.debug('[rRuntimeDiscoverer] Checking standard locations...');
-    for (const rPath of getStandardRLocations()) {
-        const installation = await probeRInstallation(
-            rPath,
-            log,
-            [ReasonDiscovered.HQ],
-        );
-        if (!installation) {
-            continue;
-        }
-
-        installation.source = 'system';
-        if (!installation.usable) {
-            log.info(`Filtering out ${installation.binpath}, reason: ${friendlyReason(installation.reasonRejected)}`);
-            continue;
-        }
-
-        if (!shouldYieldInstallation(installation, yieldedPaths)) {
-            continue;
-        }
-
-        if (!hasCurrent) {
-            installation.current = true;
-            hasCurrent = true;
-        }
-
-        log.debug(`[rRuntimeDiscoverer] Yielding system R ${installation.version} at ${rPath}`);
-        yield installation;
-    }
-
-    log.debug('[rRuntimeDiscoverer] Checking Conda environments...');
-    try {
-        const condaBinaries = await discoverCondaBinaries(log);
-        for (const binary of condaBinaries) {
-            const installation = await probeRInstallation(
-                binary.path,
-                log,
-                binary.reasons,
-                binary.packagerMetadata,
-            );
-            if (!installation) {
-                continue;
-            }
-
-            installation.source = 'conda';
-            if (!installation.usable) {
-                log.info(`Filtering out ${installation.binpath}, reason: ${friendlyReason(installation.reasonRejected)}`);
-                continue;
-            }
-
-            if (!shouldYieldInstallation(installation, yieldedPaths)) {
-                continue;
-            }
-
-            if (!hasCurrent) {
-                installation.current = true;
-                hasCurrent = true;
-            }
-
-            log.debug(`[rRuntimeDiscoverer] Yielding Conda R ${installation.version} at ${installation.binpath}`);
-            yield installation;
-        }
-    } catch (error) {
-        log.warn(`[rRuntimeDiscoverer] Error discovering Conda R: ${error}`);
-    }
-
-    log.debug(`[rRuntimeDiscoverer] Discovery complete. Found ${yieldedPaths.size} R installation(s)`);
 }
 
 async function getConfiguredInstallation(
@@ -379,86 +267,6 @@ function canonicalizeBinaryPath(binaryPath: string): string {
     }
 }
 
-function findROnPath(): string | undefined {
-    try {
-        if (os.platform() === 'win32') {
-            const result = execSync('where R', { encoding: 'utf8', timeout: 5000 });
-            return result.trim().split('\n')[0]?.trim();
-        }
-
-        return execSync('which R', { encoding: 'utf8', timeout: 5000 }).trim();
-    } catch {
-        return undefined;
-    }
-}
-
-function getStandardRLocations(): string[] {
-    const locations: string[] = [];
-
-    switch (os.platform()) {
-        case 'darwin': {
-            const frameworkBase = '/Library/Frameworks/R.framework/Versions';
-            if (fs.existsSync(frameworkBase)) {
-                try {
-                    const versions = fs.readdirSync(frameworkBase)
-                        .filter(version => !version.toLowerCase().includes('current'))
-                        .map(version => path.join(frameworkBase, version, 'Resources', 'bin', 'R'))
-                        .filter(versionPath => fs.existsSync(versionPath));
-                    locations.push(...versions);
-                } catch {
-                    return locations;
-                }
-            }
-
-            locations.push('/opt/homebrew/bin/R');
-            locations.push('/usr/local/bin/R');
-            break;
-        }
-        case 'linux': {
-            locations.push('/usr/bin/R');
-            locations.push('/usr/local/bin/R');
-
-            const optR = '/opt/R';
-            if (fs.existsSync(optR)) {
-                try {
-                    const versions = fs.readdirSync(optR)
-                        .filter(version => !version.toLowerCase().includes('current'))
-                        .map(version => path.join(optR, version, 'bin', 'R'))
-                        .filter(versionPath => fs.existsSync(versionPath));
-                    locations.push(...versions);
-                } catch {
-                    return locations;
-                }
-            }
-            break;
-        }
-        case 'win32': {
-            const programFiles = process.env.ProgramFiles || 'C:\\Program Files';
-            const rBase = path.join(programFiles, 'R');
-            if (fs.existsSync(rBase)) {
-                try {
-                    const versions = fs.readdirSync(rBase)
-                        .filter(version => version.startsWith('R-'))
-                        .map(version => {
-                            const x64Path = path.join(rBase, version, 'bin', 'x64', 'R.exe');
-                            if (fs.existsSync(x64Path)) {
-                                return x64Path;
-                            }
-                            return path.join(rBase, version, 'bin', 'R.exe');
-                        })
-                        .filter(versionPath => fs.existsSync(versionPath));
-                    locations.push(...versions);
-                } catch {
-                    return locations;
-                }
-            }
-            break;
-        }
-    }
-
-    return Array.from(new Set(locations.filter(location => fs.existsSync(location))));
-}
-
 function getSourceLabel(installation: RInstallation): string {
     const reasonDiscovered = installation.reasonDiscovered ?? [];
 
@@ -476,6 +284,8 @@ function getSourceLabel(installation: RInstallation): string {
                 return 'Module';
             case ReasonDiscovered.RIG:
                 return 'Rig';
+            case ReasonDiscovered.RVERSIONS:
+                return 'r-versions';
             case ReasonDiscovered.NIX:
                 return 'Nix';
             case ReasonDiscovered.GUIX:
@@ -527,7 +337,7 @@ async function promptForRPathWhenMissing(
     actions.push('Open Settings', 'Cancel');
 
     const action = await vscode.window.showWarningMessage(
-        'No R installation found on your system.',
+        'No R installation found. Configure ark.r.path or install RET support.',
         ...actions,
     );
 
