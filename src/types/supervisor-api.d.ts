@@ -135,6 +135,7 @@ export interface ILanguageRuntimeProvider<TInstallation = unknown> {
     resolveInitialInstallation(logChannel: vscode.LogOutputChannel): Promise<TInstallation | undefined>;
     promptForInstallation(logChannel: vscode.LogOutputChannel, options?: ILanguageInstallationPickerOptions): Promise<TInstallation | undefined>;
     formatRuntimeName(installation: TInstallation): string;
+    getRuntimeIconPath?(installation: TInstallation): vscode.IconPath | undefined;
     getRuntimePath(installation: TInstallation): string;
     getRuntimeSource(installation: TInstallation): string;
     createRuntimeMetadata(context: vscode.ExtensionContext, installation: TInstallation, logChannel: vscode.LogOutputChannel): LanguageRuntimeMetadata;

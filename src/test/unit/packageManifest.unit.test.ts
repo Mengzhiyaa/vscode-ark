@@ -41,10 +41,10 @@ suite('[Unit] R package manifest', () => {
         const packageJson = readPackageJson();
 
         assert.strictEqual(packageJson.name, 'vscode-ark');
-        assert.strictEqual(packageJson.publisher, 'ark');
-        assert.strictEqual(packageJson.icon, 'images/logo.png');
+        assert.strictEqual(packageJson.publisher, 'mengzhiya');
+        assert.strictEqual(packageJson.icon, 'images/Rlogo.png');
         assert.strictEqual(packageJson.main, './dist/extension.js');
-        assert.deepStrictEqual(packageJson.extensionDependencies, ['ark.vscode-supervisor']);
+        assert.deepStrictEqual(packageJson.extensionDependencies, ['mengzhiya.vscode-supervisor']);
         assert.strictEqual(packageJson.repository?.type, 'git');
         assert.strictEqual(packageJson.repository?.url, 'https://github.com/Mengzhiyaa/vscode-ark');
         assert.strictEqual(packageJson.homepage, 'https://github.com/Mengzhiyaa/vscode-ark#readme');
@@ -110,6 +110,7 @@ suite('[Unit] R package manifest', () => {
         assert.match(vscodeIgnore, /src\/\*\*/);
         assert.match(vscodeIgnore, /out\/\*\*/);
         assert.match(vscodeIgnore, /node_modules\/\*\*/);
+        assert.match(vscodeIgnore, /webview\/node_modules\/\*\*/);
         assert.ok(fs.existsSync(path.join(path.resolve(__dirname, '../../..'), 'webview/package.json')));
         assert.ok(fs.existsSync(path.join(path.resolve(__dirname, '../../..'), 'webview/src/lib/languages/r/rMonacoSupport.ts')));
         assert.ok(fs.existsSync(path.join(path.resolve(__dirname, '../../..'), 'scripts/sync-supervisor-api.mjs')));

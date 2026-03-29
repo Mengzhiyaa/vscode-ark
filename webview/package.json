@@ -1,7 +1,7 @@
 {
   "name": "vscode-ark-webview",
   "private": true,
-  "version": "0.0.14",
+  "version": "0.0.1",
   "type": "module",
   "scripts": {
     "dev": "vite build --watch",
@@ -16,6 +16,6 @@
   },
   "devDependencies": {
     "typescript": "^5.9.3",
-    "vite": "^8.0.1"
+    "vite": "^8.0.3"
   }
 }

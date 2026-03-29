@@ -5,12 +5,12 @@ import * as testKit from './kit';
 
 suite('Extension Test Suite', () => {
     test('Extension is present', () => {
-        const extension = vscode.extensions.getExtension('ark.vscode-ark');
+        const extension = vscode.extensions.getExtension('mengzhiya.vscode-ark');
         assert.ok(extension, 'Expected extension to be registered');
     });
 
     test('Local supervisor development dependency is present', () => {
-        const extension = vscode.extensions.getExtension('ark.vscode-supervisor');
+        const extension = vscode.extensions.getExtension('mengzhiya.vscode-supervisor');
         assert.ok(extension, 'Expected local supervisor extension to be registered for tests');
     });
 

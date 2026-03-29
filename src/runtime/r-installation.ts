@@ -278,12 +278,9 @@ export function getReasonDiscoveredFromRetKind(kind?: string): ReasonDiscovered 
 }
 
 export function formatRuntimeName(installation: RInstallation): string {
-    if (installation.rversionsOverlay?.label) {
-        return installation.rversionsOverlay.label;
-    }
-
-    if (installation.displayName) {
-        return installation.displayName;
+    const preferredName = installation.rversionsOverlay?.label ?? installation.displayName;
+    if (preferredName) {
+        return ensureRuntimeVersionInName(preferredName, installation.version);
     }
 
     let name = `R ${installation.version}`;
@@ -304,6 +301,17 @@ export function formatRuntimeName(installation: RInstallation): string {
     }
 
     return name;
+}
+
+function ensureRuntimeVersionInName(name: string, version: string): string {
+    const lowerName = name.toLowerCase();
+    const lowerVersion = version.toLowerCase();
+
+    if (lowerName.includes(lowerVersion) || lowerName.includes(`r ${lowerVersion}`)) {
+        return name;
+    }
+
+    return `${name} (R ${version})`;
 }
 
 export function convertLocatorMetadataToPackagerMetadata(

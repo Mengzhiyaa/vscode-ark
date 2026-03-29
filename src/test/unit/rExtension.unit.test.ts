@@ -39,7 +39,7 @@ suite('[Unit] Split R extension entry', () => {
 
         await assert.rejects(
             () => rExtension.activate(makeContext()),
-            /Required extension 'ark\.vscode-supervisor' is not installed/
+            /Required extension 'mengzhiya\.vscode-supervisor' is not installed/
         );
     });
 
@@ -48,7 +48,7 @@ suite('[Unit] Split R extension entry', () => {
         (vscode.debug as {
             registerDebugAdapterDescriptorFactory: typeof vscode.debug.registerDebugAdapterDescriptorFactory
         }).registerDebugAdapterDescriptorFactory = (() => {
-            return new vscode.Disposable(() => {});
+            return new vscode.Disposable(() => { });
         }) as typeof vscode.debug.registerDebugAdapterDescriptorFactory;
         const api: Partial<ISupervisorFrameworkApi> = {
             registerLanguageSupport: async (registration) => {
@@ -61,7 +61,7 @@ suite('[Unit] Split R extension entry', () => {
         };
 
         (vscode.extensions as { getExtension: typeof vscode.extensions.getExtension }).getExtension = ((id: string) => {
-            return id === 'ark.vscode-supervisor'
+            return id === 'mengzhiya.vscode-supervisor'
                 ? supervisorExtension as unknown as vscode.Extension<unknown>
                 : undefined;
         }) as typeof vscode.extensions.getExtension;

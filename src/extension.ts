@@ -3,7 +3,7 @@ import type { ISupervisorFrameworkApi } from './types/supervisor-api';
 import { registerArkDebugAdapterFactory } from './debugger';
 import { RLanguageContribution } from './rLanguageContribution';
 
-const SUPERVISOR_EXTENSION_ID = 'ark.vscode-supervisor';
+const SUPERVISOR_EXTENSION_ID = 'mengzhiya.vscode-supervisor';
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
     const supervisorExtension = vscode.extensions.getExtension<ISupervisorFrameworkApi>(SUPERVISOR_EXTENSION_ID);

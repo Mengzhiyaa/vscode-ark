@@ -10,6 +10,7 @@
 .vscode-test.mjs
 .deps/**
 node_modules/**
+webview/node_modules/**
 out/**
 artifacts/**
 docs/**

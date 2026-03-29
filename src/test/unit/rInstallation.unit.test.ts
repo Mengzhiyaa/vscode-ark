@@ -157,8 +157,8 @@ suite('[Unit] RInstallation', () => {
             },
         });
 
-        assert.strictEqual(formatRuntimeName(labeled), 'Overlay Label');
-        assert.strictEqual(formatRuntimeName(displayNamed), 'Display Name');
+        assert.strictEqual(formatRuntimeName(labeled), 'Overlay Label (R 4.4.1)');
+        assert.strictEqual(formatRuntimeName(displayNamed), 'Display Name (R 4.4.1)');
         assert.strictEqual(formatRuntimeName(conda), 'R 4.4.1 (Conda: r)');
     });
 

@@ -269,6 +269,10 @@ export class RLanguageRuntimeProvider implements ILanguageRuntimeProvider<RInsta
         return formatRuntimeName(installation);
     }
 
+    getRuntimeIconPath(_installation: RInstallation): vscode.IconPath | undefined {
+        return vscode.Uri.joinPath(this._extensionContext.extensionUri, 'images', 'Rlogo.svg');
+    }
+
     getRuntimePath(installation: RInstallation): string {
         return installation.binpath;
     }

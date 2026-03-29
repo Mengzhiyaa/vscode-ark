@@ -1,6 +1,6 @@
 {
-  "publisher": "ark",
-  "version": "0.0.14",
+  "publisher": "mengzhiya",
+  "version": "0.0.1",
   "license": "SEE LICENSE IN LICENSE.txt",
   "repository": {
     "type": "git",
@@ -20,12 +20,12 @@
     "Programming Languages",
     "Data Science"
   ],
-  "icon": "images/logo.png",
+  "icon": "images/Rlogo.png",
   "name": "vscode-ark",
-  "displayName": "R Language Support",
+  "displayName": "R",
   "description": "R Language runtime for VS Code using ark kernel",
   "extensionDependencies": [
-    "ark.vscode-supervisor"
+    "mengzhiya.vscode-supervisor"
   ],
   "activationEvents": [
     "onStartupFinished",

@@ -110,20 +110,25 @@ export async function promptForRPath(
         return installations[0];
     }
 
-    const items: RInstallationQuickPickItem[] = installations.map(installation => ({
-        label: `$(symbol-misc) ${formatRuntimeName(installation)}`,
-        description: getSourceLabel(installation),
-        detail: installation.binpath,
-        picked: preselectBinPath
-            ? installation.binpath === preselectBinPath
-            : installation.current,
-        installation,
-    }));
+    const items: RInstallationQuickPickItem[] = installations.map(installation => {
+        const label = formatRuntimeName(installation);
+        return {
+            label,
+            iconPath: getRQuickPickIconPath(),
+            description: getSourceLabel(installation),
+            detail: installation.binpath,
+            picked: preselectBinPath
+                ? installation.binpath === preselectBinPath
+                : installation.current,
+            installation,
+        };
+    });
 
     if (allowBrowse) {
         items.push({
             label: 'Browse...',
             description: 'Select a different R binary',
+            alwaysShow: true,
             action: 'browse',
         });
     }
@@ -151,6 +156,15 @@ export async function promptForRPath(
 }
 
 export { formatRuntimeName };
+
+function getRQuickPickIconPath(): vscode.IconPath | undefined {
+    const extension = vscode.extensions.getExtension('mengzhiya.vscode-ark');
+    if (!extension) {
+        return undefined;
+    }
+
+    return vscode.Uri.joinPath(extension.extensionUri, 'images', 'Rlogo.svg');
+}
 
 async function* discoverInstallations(
     log: vscode.LogOutputChannel,
