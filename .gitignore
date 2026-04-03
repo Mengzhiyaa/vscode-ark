@@ -6,3 +6,6 @@ coverage/
 *.vsix
 webview/node_modules/
 webview/dist/
+
+resources/ret/*
+resources/ark/*
