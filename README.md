@@ -26,7 +26,8 @@ dependency flow.
 ## CI And Release
 
 - `npm run install:binaries` installs the target-platform `ark` runtime into `resources/ark/`.
-- `.github/workflows/ci.yml` verifies build, tests, API sync, and a Linux VSIX smoke package.
+- `.github/workflows/ci.yml` verifies build/tests, packages target VSIX artifacts for branch pushes, and republishes them into a single `CI Pre-release` GitHub prerelease.
+- The CI prerelease is recreated from the fixed `ci-latest` tag on each `main`/`master` push so it stays at the top of the Releases page and always carries the newest CI VSIX files.
 - `.github/workflows/release.yml` builds tagged target VSIX artifacts, creates a GitHub Release, and publishes to marketplaces when `VSCE_PAT` and `OVSX_PAT` secrets are configured.
 - Release runs can also be started manually with `workflow_dispatch`, while tagged pushes matching `v*` remain the default publish trigger.
 - The repository should define `VSCE_PAT` for Visual Studio Marketplace publishing and `OVSX_PAT` for Open VSX publishing.
