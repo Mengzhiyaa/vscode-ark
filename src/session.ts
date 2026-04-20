@@ -25,6 +25,8 @@ export class RSession implements vscode.Disposable {
     private readonly _disposables: vscode.Disposable[] = [];
     private _dapStarted = false;
     private _dapAutoAttachDisabled = false;
+    private _readySessionPrepared = false;
+    private _preparingReadySessionPromise: Promise<void> | undefined;
 
     readonly onDidChangeRuntimeState: vscode.Event<RuntimeState>;
     readonly onDidEndSession: vscode.Event<LanguageRuntimeExit>;
@@ -98,6 +100,12 @@ export class RSession implements vscode.Disposable {
                     vscode.LogLevel.Debug,
                 );
                 return;
+            }
+
+            try {
+                await this.ensureReadySessionPrepared(`activating services (${reason})`);
+            } catch (error) {
+                this.log(`Error preparing restored session services: ${error}`, vscode.LogLevel.Warning);
             }
 
             const connectDap = async () => {
@@ -197,10 +205,7 @@ export class RSession implements vscode.Disposable {
     private async onStateChange(state: RuntimeState): Promise<void> {
         if (state === RUNTIME_STATE_READY) {
             try {
-                await Promise.all([
-                    this.startDap(),
-                    this.setConsoleWidth(),
-                ]);
+                await this.ensureReadySessionPrepared('session entered ready state');
             } catch (error) {
                 this.log(`Error preparing session services: ${error}`, vscode.LogLevel.Error);
             }
@@ -210,6 +215,8 @@ export class RSession implements vscode.Disposable {
         if (state === RUNTIME_STATE_EXITED) {
             this._dapStarted = false;
             this._dapAutoAttachDisabled = false;
+            this._readySessionPrepared = false;
+            this._preparingReadySessionPromise = undefined;
 
             try {
                 await this.deactivateServices('session exited');
@@ -223,6 +230,28 @@ export class RSession implements vscode.Disposable {
         return this.state === RUNTIME_STATE_READY ||
             this.state === RUNTIME_STATE_IDLE ||
             this.state === RUNTIME_STATE_BUSY;
+    }
+
+    private async ensureReadySessionPrepared(reason: string): Promise<void> {
+        if (this._readySessionPrepared || !this.canActivateServices()) {
+            return;
+        }
+
+        if (this._preparingReadySessionPromise) {
+            return this._preparingReadySessionPromise;
+        }
+
+        this.log(`Preparing ready session services. Reason: ${reason}`, vscode.LogLevel.Debug);
+        this._preparingReadySessionPromise = Promise.all([
+            this.startDap(),
+            this.setConsoleWidth(),
+        ]).then(() => {
+            this._readySessionPrepared = true;
+        }).finally(() => {
+            this._preparingReadySessionPromise = undefined;
+        });
+
+        return this._preparingReadySessionPromise;
     }
 
     private log(message: string, level: vscode.LogLevel = vscode.LogLevel.Info): void {

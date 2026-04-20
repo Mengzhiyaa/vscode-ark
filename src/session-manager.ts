@@ -15,6 +15,8 @@ const SESSION_MODE_CONSOLE = 'console';
 const SESSION_MODE_NOTEBOOK = 'notebook';
 const SESSION_MODE_BACKGROUND = 'background';
 const RUNTIME_STATE_READY = 'ready';
+const RUNTIME_STATE_IDLE = 'idle';
+const RUNTIME_STATE_BUSY = 'busy';
 const RUNTIME_STATE_UNINITIALIZED = 'uninitialized';
 const RUNTIME_STATE_EXITED = 'exited';
 const RUNTIME_CLIENT_TYPE_RETICULATE = 'positron.reticulate' as LanguageRuntimeClientType;
@@ -46,6 +48,8 @@ export class RSessionManager implements vscode.Disposable {
                 void this.enqueueActivation(() => this.didChangeForegroundSession(session?.sessionId));
             }),
         );
+
+        void this.enqueueActivation(() => this.reconcileRestoredSessionsOnStartup());
     }
 
     private getLastForegroundSessionId(): string | null {
@@ -172,6 +176,53 @@ export class RSessionManager implements vscode.Disposable {
         await this.activateConsoleSession(session, 'foreground session changed');
     }
 
+    private async reconcileRestoredSessionsOnStartup(): Promise<void> {
+        const runtimeForegroundSession = this._runtimeSessionService.foregroundSession;
+        if (runtimeForegroundSession && this.isRSession(runtimeForegroundSession)) {
+            const session = this._sessions.get(runtimeForegroundSession.sessionId);
+            if (!session) {
+                return;
+            }
+
+            if (session.metadata.sessionMode === SESSION_MODE_CONSOLE) {
+                if (this.getLastForegroundSessionId() !== session.sessionId) {
+                    await this.setLastForegroundSessionId(session.sessionId);
+                }
+
+                if (this.canProactivelyActivate(session)) {
+                    await this.activateConsoleSession(
+                        session,
+                        'restored foreground console session detected during startup',
+                    );
+                }
+            }
+
+            return;
+        }
+
+        const fallbackConsoleSession = this.getActiveRSessions()
+            .sort((left, right) => right.created - left.created)
+            .find((session) => {
+                return session.metadata.sessionMode === SESSION_MODE_CONSOLE &&
+                    session.state !== RUNTIME_STATE_UNINITIALIZED &&
+                    session.state !== RUNTIME_STATE_EXITED;
+            });
+        if (!fallbackConsoleSession) {
+            return;
+        }
+
+        if (this.getLastForegroundSessionId() !== fallbackConsoleSession.sessionId) {
+            await this.setLastForegroundSessionId(fallbackConsoleSession.sessionId);
+        }
+
+        if (this.canProactivelyActivate(fallbackConsoleSession)) {
+            await this.activateConsoleSession(
+                fallbackConsoleSession,
+                'restored console session fallback detected during startup',
+            );
+        }
+    }
+
     private async activateConsoleSession(session: RSession, reason: string): Promise<void> {
         await Promise.all(
             this.getActiveRSessions()
@@ -227,6 +278,12 @@ export class RSessionManager implements vscode.Disposable {
 
     private enqueueActivation(task: () => Promise<void>): Promise<void> {
         return this._activationQueue.add(task);
+    }
+
+    private canProactivelyActivate(session: RSession): boolean {
+        return session.state === RUNTIME_STATE_READY ||
+            session.state === RUNTIME_STATE_IDLE ||
+            session.state === RUNTIME_STATE_BUSY;
     }
 
     private isRSession(session: ILanguageRuntimeSession): boolean {

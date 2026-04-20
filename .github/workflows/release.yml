@@ -67,7 +67,7 @@ jobs:
             target: linux-arm64
             target_os: linux
             target_arch: arm64
-          - runner: macos-13
+          - runner: macos-15
             target: darwin-x64
             target_os: darwin
             target_arch: x64
