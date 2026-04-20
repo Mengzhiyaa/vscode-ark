@@ -254,6 +254,18 @@ export interface IBinaryProvider {
     readonly ownerId: string;
     getBinaryDefinitions(): Readonly<Record<string, BinaryDefinition>>;
 }
+export interface Utf8Position {
+    line: number;
+    character: number;
+}
+export interface Utf8Range {
+    start: Utf8Position;
+    end: Utf8Position;
+}
+export interface Utf8Location {
+    uri: vscode.Uri;
+    range: Utf8Range;
+}
 export interface ICodeExecutionAttribution {
     source: string;
     fileUri?: vscode.Uri;
