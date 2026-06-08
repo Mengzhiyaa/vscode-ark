@@ -20,8 +20,13 @@ interface PackageJsonShape {
     contributes?: {
         languages?: Array<{ id?: string }>;
         grammars?: Array<{ language?: string }>;
+        customEditors?: Array<{ viewType?: string }>;
+        notebookRenderer?: Array<{ id?: string; mimeTypes?: string[]; entrypoint?: string }>;
         commands?: Array<{ command?: string }>;
         keybindings?: Array<{ command?: string; key?: string; mac?: string; when?: string }>;
+        menus?: Record<string, Array<{ command?: string }>>;
+        viewsWelcome?: Array<{ view?: string; when?: string }>;
+        configuration?: { properties?: Record<string, { default?: unknown }> };
     };
 }
 
@@ -50,7 +55,7 @@ suite('[Unit] R package manifest', () => {
         assert.strictEqual(packageJson.homepage, 'https://github.com/Mengzhiyaa/vscode-ark#readme');
         assert.strictEqual(packageJson.bugs?.url, 'https://github.com/Mengzhiyaa/vscode-ark/issues');
         assert.deepStrictEqual(packageJson.workspaces, ['webview']);
-        assert.strictEqual(packageJson.positron?.binaryDependencies?.ark, '0.1.242');
+        assert.strictEqual(packageJson.positron?.binaryDependencies?.ark, 'ark-0.1.251-242-2a72b5e');
         assert.ok(packageJson.devDependencies?.['@vscode/vsce']);
         assert.ok(packageJson.devDependencies?.ovsx);
         assert.strictEqual(packageJson.scripts?.['vsce:package'], 'vsce package');
@@ -63,8 +68,22 @@ suite('[Unit] R package manifest', () => {
             packageJson.scripts?.['test:unit:ext'],
             'npm run test:prepare && node scripts/run-vscode-tests.mjs --label unit'
         );
-        assert.deepStrictEqual(packageJson.contributes?.languages?.map((entry) => entry.id), ['r']);
+        assert.deepStrictEqual(packageJson.contributes?.languages?.map((entry) => entry.id), ['r', 'rdata', 'rds']);
         assert.deepStrictEqual(packageJson.contributes?.grammars?.map((entry) => entry.language), ['r']);
+        assert.deepStrictEqual(
+            packageJson.contributes?.customEditors?.map((entry) => entry.viewType),
+            ['vscode-ark.rdataLoader', 'vscode-ark.rdsLoader'],
+        );
+        assert.deepStrictEqual(
+            packageJson.contributes?.notebookRenderer?.map((entry) => entry.id),
+            ['vscode-ark.r.htmlwidget'],
+        );
+        assert.deepStrictEqual(
+            packageJson.contributes?.notebookRenderer?.[0]?.mimeTypes,
+            ['application/vnd.r.htmlwidget'],
+        );
+        assert.strictEqual(packageJson.contributes?.notebookRenderer?.[0]?.entrypoint, 'resources/js/htmlwidget.js');
+        assert.strictEqual(packageJson.contributes?.configuration?.properties?.['ark.r.testing']?.default, true);
 
         const commands = new Set((packageJson.contributes?.commands ?? []).map((entry) => entry.command));
         assert.ok(commands.has('supervisor.startConsole'));
@@ -74,6 +93,35 @@ suite('[Unit] R package manifest', () => {
         assert.ok(commands.has('supervisor.insertAssignmentOperator'));
         assert.ok(commands.has('supervisor.insertPipeOperator'));
         assert.ok(commands.has('supervisor.help.showHelpAtCursor'));
+        assert.ok(commands.has('r.packageLoad'));
+        assert.ok(commands.has('r.packageTest'));
+        assert.ok(commands.has('r.sourceCurrentFile'));
+        assert.ok(commands.has('r.useTestthat'));
+        assert.ok(commands.has('r.useTest'));
+        assert.ok(commands.has('r.loadRDataFile'));
+        assert.ok(commands.has('r.loadRdsFile'));
+        assert.ok(commands.has('r.showRVersion'));
+
+        const explorerContextCommands = new Set(
+            (packageJson.contributes?.menus?.['explorer/context'] ?? []).map((entry) => entry.command),
+        );
+        assert.ok(explorerContextCommands.has('r.loadRDataFile'));
+        assert.ok(explorerContextCommands.has('r.loadRdsFile'));
+
+        const commandPaletteCommands = new Set(
+            (packageJson.contributes?.menus?.commandPalette ?? []).map((entry) => entry.command),
+        );
+        assert.ok(commandPaletteCommands.has('r.useTestthat'));
+        assert.ok(commandPaletteCommands.has('r.useTest'));
+
+        const testingWelcomeStates = new Set(
+            (packageJson.contributes?.viewsWelcome ?? [])
+                .filter((entry) => entry.view === 'testing')
+                .map((entry) => entry.when),
+        );
+        assert.ok(testingWelcomeStates.has('!isRPackage'));
+        assert.ok(testingWelcomeStates.has('isRPackage && config.ark.r.testing && !testthatIsConfigured'));
+        assert.ok(testingWelcomeStates.has('isRPackage && config.ark.r.testing && testthatIsConfigured && !testthatHasTests'));
 
         const keybindings = packageJson.contributes?.keybindings ?? [];
         assert.ok(keybindings.some((entry) =>
@@ -112,6 +160,7 @@ suite('[Unit] R package manifest', () => {
         assert.match(vscodeIgnore, /node_modules\/\*\*/);
         assert.match(vscodeIgnore, /webview\/node_modules\/\*\*/);
         assert.ok(fs.existsSync(path.join(path.resolve(__dirname, '../../..'), 'webview/package.json')));
+        assert.ok(fs.existsSync(path.join(path.resolve(__dirname, '../../..'), 'resources/js/htmlwidget.js')));
         assert.ok(fs.existsSync(path.join(path.resolve(__dirname, '../../..'), 'webview/src/lib/languages/r/rMonacoSupport.ts')));
         assert.ok(fs.existsSync(path.join(path.resolve(__dirname, '../../..'), 'scripts/sync-supervisor-api.mjs')));
         assert.ok(fs.existsSync(path.join(path.resolve(__dirname, '../../..'), 'scripts/install-binaries.mjs')));

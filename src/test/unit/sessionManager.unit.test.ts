@@ -159,6 +159,10 @@ function makeRuntimeSession(
         setConsoleWidth: async () => {
             counters.setConsoleWidth += 1;
         },
+        execute: () => undefined,
+        evaluate: async () => ({ result: null, output: '' }),
+        executeAndWait: async () => undefined,
+        callMethod: async () => undefined,
         watchRuntimeClient: () => new vscode.Disposable(() => undefined),
         waitLsp: async () => undefined,
         getRuntimeState: () => state,

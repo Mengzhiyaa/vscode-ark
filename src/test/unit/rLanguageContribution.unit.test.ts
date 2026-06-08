@@ -92,6 +92,33 @@ function makeConsoleServiceStub(overrides: Record<string, unknown> = {}): any {
     };
 }
 
+function makePackagesServiceStub(overrides: Record<string, unknown> = {}): any {
+    return {
+        activeSession: undefined,
+        activePackagesInstance: undefined,
+        selectedPackage: undefined,
+        itemSize: 'card',
+        onDidChangeActivePackagesInstance: (() => new vscode.Disposable(() => {})) as vscode.Event<any>,
+        onDidStopPackagesInstance: (() => new vscode.Disposable(() => {})) as vscode.Event<any>,
+        onDidChangeItemSize: (() => new vscode.Disposable(() => {})) as vscode.Event<any>,
+        registerPackageManagerProvider: () => new vscode.Disposable(() => {}),
+        setActivePositronPackagesSession: () => undefined,
+        setSelectedPackage: () => undefined,
+        setItemSize: () => undefined,
+        getInstances: () => [],
+        refreshPackages: async () => [],
+        refreshMetadata: async () => undefined,
+        installPackages: async () => undefined,
+        uninstallPackages: async () => undefined,
+        updatePackages: async () => undefined,
+        updateAllPackages: async () => undefined,
+        searchPackages: async () => [],
+        searchPackageVersions: async () => [],
+        dispose: () => undefined,
+        ...overrides,
+    };
+}
+
 function makeInstallation(binpath: string): RInstallation {
     return new RInstallation({
         binpath,
@@ -109,6 +136,8 @@ suite('[Unit] RLanguageContribution', () => {
     const originalShowTextDocument = vscode.window.showTextDocument.bind(vscode.window);
     const originalShowInformationMessage = vscode.window.showInformationMessage.bind(vscode.window);
     const originalShowWarningMessage = vscode.window.showWarningMessage.bind(vscode.window);
+    const originalRegisterUriHandler = vscode.window.registerUriHandler.bind(vscode.window);
+    const originalRegisterCustomEditorProvider = vscode.window.registerCustomEditorProvider.bind(vscode.window);
     const originalProbeRInstallation = rInstallationModule.probeRInstallation;
 
     function setActiveTextEditor(editor: vscode.TextEditor | undefined): void {
@@ -118,6 +147,13 @@ suite('[Unit] RLanguageContribution', () => {
         });
     }
 
+    setup(() => {
+        (vscode.window as { registerUriHandler: typeof vscode.window.registerUriHandler }).registerUriHandler =
+            (() => new vscode.Disposable(() => {})) as typeof vscode.window.registerUriHandler;
+        (vscode.window as { registerCustomEditorProvider: typeof vscode.window.registerCustomEditorProvider }).registerCustomEditorProvider =
+            (() => new vscode.Disposable(() => {})) as typeof vscode.window.registerCustomEditorProvider;
+    });
+
     teardown(() => {
         (vscode.commands as { registerCommand: typeof vscode.commands.registerCommand }).registerCommand = originalRegisterCommand;
         (vscode.commands as { executeCommand: typeof vscode.commands.executeCommand }).executeCommand = originalExecuteCommand;
@@ -126,6 +162,10 @@ suite('[Unit] RLanguageContribution', () => {
             originalShowInformationMessage;
         (vscode.window as { showWarningMessage: typeof vscode.window.showWarningMessage }).showWarningMessage =
             originalShowWarningMessage;
+        (vscode.window as { registerUriHandler: typeof vscode.window.registerUriHandler }).registerUriHandler =
+            originalRegisterUriHandler;
+        (vscode.window as { registerCustomEditorProvider: typeof vscode.window.registerCustomEditorProvider }).registerCustomEditorProvider =
+            originalRegisterCustomEditorProvider;
         (rInstallationModule as { probeRInstallation: typeof rInstallationModule.probeRInstallation }).probeRInstallation =
             originalProbeRInstallation;
         if (originalActiveTextEditor) {
@@ -213,6 +253,7 @@ suite('[Unit] RLanguageContribution', () => {
                 find: async () => undefined,
                 showWelcomePage: () => undefined,
             },
+            positronPackagesService: makePackagesServiceStub(),
         };
 
         const contribution = new RLanguageContribution(makeContext(), api as ISupervisorFrameworkApi);
@@ -286,6 +327,7 @@ suite('[Unit] RLanguageContribution', () => {
                 find: async () => undefined,
                 showWelcomePage: () => undefined,
             },
+            positronPackagesService: makePackagesServiceStub(),
         };
 
         const contribution = new RLanguageContribution(makeContext(), api as ISupervisorFrameworkApi);
@@ -368,6 +410,7 @@ suite('[Unit] RLanguageContribution', () => {
                 find: async () => undefined,
                 showWelcomePage: () => undefined,
             },
+            positronPackagesService: makePackagesServiceStub(),
         };
 
         const contribution = new RLanguageContribution(makeContext(), api as ISupervisorFrameworkApi);
@@ -492,6 +535,7 @@ suite('[Unit] RLanguageContribution', () => {
                 find: async () => undefined,
                 showWelcomePage: () => undefined,
             },
+            positronPackagesService: makePackagesServiceStub(),
         };
 
         const contribution = new RLanguageContribution(makeContext(), {} as ISupervisorFrameworkApi);
@@ -600,6 +644,7 @@ suite('[Unit] RLanguageContribution', () => {
                 find: async () => undefined,
                 showWelcomePage: () => undefined,
             },
+            positronPackagesService: makePackagesServiceStub(),
         };
 
         const contribution = new RLanguageContribution(makeContext(), {} as ISupervisorFrameworkApi);

@@ -79,9 +79,12 @@ function readBinaryVersions() {
 // Binary configuration: repo, naming conventions, etc.
 const BINARY_CONFIGS = {
     ark: {
-        repo: 'posit-dev/ark',
+        repo: 'posit-dev/positron-ark',
         binaryName: (platform) => platform.startsWith('windows') ? 'ark.exe' : 'ark',
-        archivePattern: (version, platform) => `ark-${version}-${platform}.zip`,
+        archivePattern: (version, platform) => {
+            const assetVersion = version.replace(/^ark-/, '');
+            return `ark-${assetVersion}-${platform}.zip`;
+        },
         archiveType: 'zip',
         installDir: 'resources/ark',
         platformOverride: (platform) => platform.startsWith('darwin') ? 'darwin-universal' : platform,

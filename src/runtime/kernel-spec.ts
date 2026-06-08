@@ -17,6 +17,20 @@ function prependPathEntry(env: Record<string, string>, entries: string[]): void 
     env.PATH = [...entries, currentPath].filter(Boolean).join(path.delimiter);
 }
 
+function getCliHyperlinkEnvironment(): Record<string, string> {
+    const extensionUriBase = `${vscode.env.uriScheme}://mengzhiya.vscode-ark`;
+    return {
+        R_CLI_HYPERLINKS: 'TRUE',
+        R_CLI_HYPERLINK_FILE_URL_FORMAT: `${vscode.env.uriScheme}://file{path}:{line}:{column}`,
+        R_CLI_HYPERLINK_RUN: 'TRUE',
+        R_CLI_HYPERLINK_RUN_URL_FORMAT: `${extensionUriBase}/cli?command=x-r-run:{code}`,
+        R_CLI_HYPERLINK_HELP: 'TRUE',
+        R_CLI_HYPERLINK_HELP_URL_FORMAT: `${extensionUriBase}/cli?command=x-r-help:{topic}`,
+        R_CLI_HYPERLINK_VIGNETTE: 'TRUE',
+        R_CLI_HYPERLINK_VIGNETTE_URL_FORMAT: `${extensionUriBase}/cli?command=x-r-vignette:{vignette}`,
+    };
+}
+
 function setPixiEnvironmentVariables(
     env: Record<string, string>,
     environmentPath: string,
@@ -181,6 +195,7 @@ export async function createJupyterKernelSpec(
         RUST_BACKTRACE: '1',
         RUST_LOG: `${logLevelForeign},ark=${logLevel}`,
         ...getArkEnvironmentVariables(rInstallation.homepath),
+        ...getCliHyperlinkEnvironment(),
         ...userEnv,
     };
 

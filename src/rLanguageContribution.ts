@@ -22,6 +22,12 @@ import type {
 import { RCommandIds } from './rCommandIds';
 import { registerTabCompletion } from './editor/tabCompletion';
 import { registerHelpActions } from './services/help/helpActions';
+import { registerRCommands } from './commands';
+import { RDataEditorProvider, RdsEditorProvider } from './rdata-editor';
+import { RPackageManager } from './packages';
+import { registerUriHandler } from './uri-handler';
+import { setRContexts } from './contexts';
+import { setupRTestExplorer } from './testing';
 import { R_LANGUAGE_ID } from './languageIds';
 import { createJupyterKernelSpec } from './runtime/kernel-spec';
 import { RLanguageLsp } from './runtime/lsp';
@@ -434,10 +440,13 @@ export class RBinaryProvider implements IBinaryProvider {
 
         const defs: Record<string, BinaryDefinition> = {
             ark: {
-                repo: 'posit-dev/ark',
+                repo: 'posit-dev/positron-ark',
                 version: arkVersion,
                 binaryName: process.platform === 'win32' ? 'ark.exe' : 'ark',
-                archivePattern: (version, platform) => `ark-${version}-${platform}.zip`,
+                archivePattern: (version, platform) => {
+                    const assetVersion = version.replace(/^ark-/, '');
+                    return `ark-${assetVersion}-${platform}.zip`;
+                },
                 installDir: path.join(
                     this._extensionContext.extensionPath,
                     'resources',
@@ -500,11 +509,23 @@ export class RLanguageContribution implements ILanguageExtensionContribution {
             services.positronConsoleService,
             services.logChannel,
         );
+        void setRContexts(this._extensionContext).then(disposable => {
+            this._extensionContext.subscriptions.push(disposable);
+        });
+        void setupRTestExplorer(this._extensionContext, services).then(disposable => {
+            if (disposable) {
+                this._extensionContext.subscriptions.push(disposable);
+            }
+        });
         return [
             services.runtimeManager.registerExternalDiscoveryManager?.(this.runtimeProvider.languageId) ??
                 new vscode.Disposable(() => undefined),
             services.runtimeStartupService.registerRuntimeManager(runtimeStartupManager),
             services.runtimeSessionService.registerSessionManager(runtimeManager),
+            services.positronPackagesService.registerPackageManagerProvider({
+                languageId: this.runtimeProvider.languageId,
+                createPackageManager: session => new RPackageManager(session, services),
+            }),
             runtimeStartupManager,
             runtimeSessionManager,
             ...registerHelpActions(
@@ -512,6 +533,10 @@ export class RLanguageContribution implements ILanguageExtensionContribution {
                 this.runtimeProvider.languageName,
                 services
             ),
+            ...registerRCommands(this._extensionContext, services),
+            registerUriHandler(services),
+            RDataEditorProvider.register(services),
+            RdsEditorProvider.register(services),
             vscode.commands.registerCommand('positron.reticulate.isAutoEnabled', () => {
                 return false;
             }),

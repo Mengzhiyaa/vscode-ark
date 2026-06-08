@@ -113,6 +113,11 @@ suite('[Unit] kernel-spec', () => {
         assert.strictEqual(spec.startup_command, 'conda activate /opt/conda/envs/r');
         assert.strictEqual(spec.env?.R_LIBS, '/opt/R-libs');
         assert.strictEqual(spec.env?.USER_FLAG, '1');
+        assert.strictEqual(spec.env?.R_CLI_HYPERLINKS, 'TRUE');
+        assert.strictEqual(spec.env?.R_CLI_HYPERLINK_RUN, 'TRUE');
+        assert.ok(spec.env?.R_CLI_HYPERLINK_RUN_URL_FORMAT?.includes('://mengzhiya.vscode-ark/cli?command=x-r-run:{code}'));
+        assert.ok(spec.env?.R_CLI_HYPERLINK_HELP_URL_FORMAT?.includes('://mengzhiya.vscode-ark/cli?command=x-r-help:{topic}'));
+        assert.ok(spec.env?.R_CLI_HYPERLINK_VIGNETTE_URL_FORMAT?.includes('://mengzhiya.vscode-ark/cli?command=x-r-vignette:{vignette}'));
     });
 
     test('falls back to conda activation on Unix when RET launch metadata is absent', async () => {

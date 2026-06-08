@@ -40,7 +40,28 @@
     "onCommand:supervisor.help.showHelpAtCursor",
     "onCommand:supervisor.help.lookupHelpTopic",
     "onCommand:supervisor.help.showWelcome",
-    "onCommand:supervisor.help.find"
+    "onCommand:supervisor.help.find",
+    "onCommand:r.createNewFile",
+    "onCommand:r.insertSection",
+    "onCommand:r.packageLoad",
+    "onCommand:r.packageBuild",
+    "onCommand:r.packageInstall",
+    "onCommand:r.packageTest",
+    "onCommand:r.packageTestExplorer",
+    "onCommand:r.useTestthat",
+    "onCommand:r.useTest",
+    "onCommand:r.packageCheck",
+    "onCommand:r.packageDocument",
+    "onCommand:r.sourceCurrentFile",
+    "onCommand:r.sourceCurrentFileWithEcho",
+    "onCommand:r.rmarkdownRender",
+    "onCommand:r.loadRDataFile",
+    "onCommand:r.loadRdsFile",
+    "onCommand:r.loadRDataFileWithPicker",
+    "onCommand:r.showRVersion",
+    "onLanguage:rdata",
+    "onLanguage:rds",
+    "onUri"
   ],
   "main": "./dist/extension.js",
   "scripts": {
@@ -66,7 +87,7 @@
   "positron": {
     "minimumRVersion": "4.2.0",
     "binaryDependencies": {
-      "ark": "0.1.242",
+      "ark": "ark-0.1.251-242-2a72b5e",
       "ret": "v0.1.2"
     }
   },
@@ -86,6 +107,30 @@
           "r"
         ],
         "configuration": "./language-configuration.json"
+      },
+      {
+        "id": "rdata",
+        "extensions": [
+          ".RData",
+          ".Rdata",
+          ".rdata",
+          ".rda"
+        ],
+        "aliases": [
+          "R Data",
+          "RData"
+        ]
+      },
+      {
+        "id": "rds",
+        "extensions": [
+          ".rds",
+          ".RDS"
+        ],
+        "aliases": [
+          "R Data Single",
+          "RDS"
+        ]
       }
     ],
     "grammars": [
@@ -93,6 +138,50 @@
         "language": "r",
         "scopeName": "source.r",
         "path": "./syntaxes/r.tmGrammar.gen.json"
+      }
+    ],
+    "customEditors": [
+      {
+        "viewType": "vscode-ark.rdataLoader",
+        "displayName": "R Data Loader",
+        "priority": "default",
+        "selector": [
+          {
+            "filenamePattern": "*.RData"
+          },
+          {
+            "filenamePattern": "*.Rdata"
+          },
+          {
+            "filenamePattern": "*.rdata"
+          },
+          {
+            "filenamePattern": "*.rda"
+          }
+        ]
+      },
+      {
+        "viewType": "vscode-ark.rdsLoader",
+        "displayName": "RDS Loader",
+        "priority": "default",
+        "selector": [
+          {
+            "filenamePattern": "*.rds"
+          },
+          {
+            "filenamePattern": "*.RDS"
+          }
+        ]
+      }
+    ],
+    "notebookRenderer": [
+      {
+        "id": "vscode-ark.r.htmlwidget",
+        "displayName": "R HTML Widget",
+        "mimeTypes": [
+          "application/vnd.r.htmlwidget"
+        ],
+        "entrypoint": "resources/js/htmlwidget.js"
       }
     ],
     "commands": [
@@ -147,6 +236,220 @@
         "title": "Find in Help",
         "category": "Ark Help",
         "icon": "$(search)"
+      },
+      {
+        "command": "r.createNewFile",
+        "title": "New R File",
+        "category": "R"
+      },
+      {
+        "command": "r.insertSection",
+        "title": "Insert Section",
+        "category": "R"
+      },
+      {
+        "command": "r.packageLoad",
+        "title": "Load Package",
+        "category": "R"
+      },
+      {
+        "command": "r.packageBuild",
+        "title": "Build Package",
+        "category": "R"
+      },
+      {
+        "command": "r.packageInstall",
+        "title": "Install Package",
+        "category": "R"
+      },
+      {
+        "command": "r.packageTest",
+        "title": "Test Package",
+        "category": "R"
+      },
+      {
+        "command": "r.packageTestExplorer",
+        "title": "Show Package Tests",
+        "category": "R"
+      },
+      {
+        "command": "r.useTestthat",
+        "title": "Use testthat",
+        "category": "R"
+      },
+      {
+        "command": "r.useTest",
+        "title": "Add testthat Test",
+        "category": "R"
+      },
+      {
+        "command": "r.packageCheck",
+        "title": "Check Package",
+        "category": "R"
+      },
+      {
+        "command": "r.packageDocument",
+        "title": "Document Package",
+        "category": "R"
+      },
+      {
+        "command": "r.sourceCurrentFile",
+        "title": "Source Current File",
+        "category": "R",
+        "icon": "$(play)"
+      },
+      {
+        "command": "r.sourceCurrentFileWithEcho",
+        "title": "Source Current File with Echo",
+        "category": "R",
+        "icon": "$(play)"
+      },
+      {
+        "command": "r.rmarkdownRender",
+        "title": "Render R Markdown",
+        "category": "R",
+        "icon": "$(play)"
+      },
+      {
+        "command": "r.loadRDataFile",
+        "title": "Load R Data File",
+        "category": "R"
+      },
+      {
+        "command": "r.loadRdsFile",
+        "title": "Load RDS File",
+        "category": "R"
+      },
+      {
+        "command": "r.loadRDataFileWithPicker",
+        "title": "Load R Data File...",
+        "category": "R"
+      },
+      {
+        "command": "r.showRVersion",
+        "title": "Show R Version",
+        "category": "R"
+      }
+    ],
+    "menus": {
+      "explorer/context": [
+        {
+          "command": "r.loadRDataFile",
+          "group": "R",
+          "when": "resourceExtname == '.RData' || resourceExtname == '.Rdata' || resourceExtname == '.rdata' || resourceExtname == '.rda'"
+        },
+        {
+          "command": "r.loadRdsFile",
+          "group": "R",
+          "when": "resourceExtname == '.rds' || resourceExtname == '.RDS'"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "r.sourceCurrentFile",
+          "when": "editorLangId == r"
+        },
+        {
+          "command": "r.sourceCurrentFileWithEcho",
+          "when": "editorLangId == r"
+        },
+        {
+          "command": "r.rmarkdownRender",
+          "when": "resourceExtname == '.rmd' || resourceExtname == '.Rmd'"
+        },
+        {
+          "command": "r.packageLoad",
+          "when": "isRPackage"
+        },
+        {
+          "command": "r.packageBuild",
+          "when": "isRPackage"
+        },
+        {
+          "command": "r.packageInstall",
+          "when": "isRPackage"
+        },
+        {
+          "command": "r.packageTest",
+          "when": "isRPackage"
+        },
+        {
+          "command": "r.packageTestExplorer",
+          "when": "isRPackage"
+        },
+        {
+          "command": "r.useTestthat",
+          "when": "isRPackage && !testthatIsConfigured"
+        },
+        {
+          "command": "r.useTest",
+          "when": "isRPackage && testthatIsConfigured"
+        },
+        {
+          "command": "r.packageCheck",
+          "when": "isRPackage"
+        },
+        {
+          "command": "r.packageDocument",
+          "when": "isRPackage"
+        }
+      ],
+      "file/newFile": [
+        {
+          "command": "r.createNewFile",
+          "group": "file",
+          "when": "!virtualWorkspace"
+        }
+      ],
+      "editor/context": [
+        {
+          "command": "r.sourceCurrentFile",
+          "group": "R",
+          "when": "editorLangId == r && !isRPackage"
+        },
+        {
+          "command": "r.rmarkdownRender",
+          "group": "R",
+          "when": "resourceExtname == '.rmd' || resourceExtname == '.Rmd'"
+        }
+      ],
+      "editor/title/run": [
+        {
+          "command": "r.sourceCurrentFileWithEcho",
+          "group": "navigation@0",
+          "when": "resourceLangId == r && !isInDiffEditor && !isRPackage"
+        },
+        {
+          "command": "r.sourceCurrentFile",
+          "group": "navigation@1",
+          "when": "resourceLangId == r && !isInDiffEditor && !isRPackage"
+        },
+        {
+          "command": "r.rmarkdownRender",
+          "when": "(resourceExtname == '.rmd' || resourceExtname == '.Rmd') && !isInDiffEditor"
+        }
+      ]
+    },
+    "viewsWelcome": [
+      {
+        "view": "testing",
+        "contents": "Workspace does not appear to be an R package.",
+        "when": "!isRPackage"
+      },
+      {
+        "view": "testing",
+        "contents": "R tests can appear here if the package uses testthat and Ark > R: Testing is enabled.\n[Adjust this setting](command:workbench.action.openSettings?\"ark.r.testing\")",
+        "when": "isRPackage && !config.ark.r.testing"
+      },
+      {
+        "view": "testing",
+        "contents": "Package does not appear to use testthat.\n[Configure testthat for R](command:r.useTestthat)",
+        "when": "isRPackage && config.ark.r.testing && !testthatIsConfigured"
+      },
+      {
+        "view": "testing",
+        "contents": "No testthat tests found.\n[Add a test](command:r.useTest)",
+        "when": "isRPackage && config.ark.r.testing && testthatIsConfigured && !testthatHasTests"
       }
     ],
     "keybindings": [
@@ -197,6 +500,21 @@
           "type": "string",
           "default": "",
           "description": "Path to R binary (e.g., /usr/local/bin/R). Leave empty to use RET-based auto-detection."
+        },
+        "ark.r.testing": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable R package testthat discovery in the Test Explorer."
+        },
+        "packages.r.installer": {
+          "type": "string",
+          "default": "auto",
+          "enum": [
+            "auto",
+            "pak",
+            "base"
+          ],
+          "description": "Controls the R package installer used by the Packages view. Auto prefers pak when available and falls back to base R."
         },
         "positron.reticulate.enabled": {
           "type": "string",
