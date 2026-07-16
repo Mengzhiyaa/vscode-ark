@@ -20,11 +20,17 @@ import {
     StreamInfo,
     RevealOutputChannelOn,
     DocumentSelector,
+    DidChangeConfigurationNotification,
 } from 'vscode-languageclient/node';
 import { RErrorHandler } from './error-handler';
 import { VirtualDocumentProvider } from './virtual-documents';
 import { RStatementRangeProvider } from './statement-range';
 import { RHelpTopicProvider } from './help';
+import {
+    getArkLspSettings,
+    mapArkLspConfiguration,
+    toLanguageClientTrace,
+} from './lsp-settings';
 
 const LANGUAGE_LSP_STATE = {
     Uninitialized: 'uninitialized' as LanguageLspState,
@@ -209,6 +215,42 @@ export class RLanguageLsp implements ILanguageLsp {
         }
     }
 
+    private scheduleConfigurationRefresh(
+        client: LanguageClient,
+        notifyServer: boolean,
+    ): void {
+        // vscode-languageclient also watches configuration changes for its
+        // legacy `positron.r.trace.server` setting. Apply Ark's canonical value
+        // after the current event has reached every listener so it wins without
+        // mutating the user's compatibility settings.
+        queueMicrotask(() => {
+            void this.refreshConfiguration(client, notifyServer).catch((error) => {
+                this.log(`Failed to refresh LSP configuration: ${error}`, vscode.LogLevel.Warning);
+            });
+        });
+    }
+
+    private async refreshConfiguration(
+        client: LanguageClient,
+        notifyServer: boolean,
+    ): Promise<void> {
+        if (this.client !== client) {
+            return;
+        }
+
+        const settings = getArkLspSettings(this._metadata.notebookUri);
+        await client.setTrace(toLanguageClientTrace(settings.trace.server));
+
+        if (notifyServer && this._state === LANGUAGE_LSP_STATE.Running) {
+            // Ark uses the configuration pull model. The empty notification
+            // tells it to request the affected positron.r.* sections again;
+            // middleware below maps those requests to ark.lsp.* values.
+            await client.sendNotification(DidChangeConfigurationNotification.type, {
+                settings: null,
+            });
+        }
+    }
+
     private setState(state: LanguageLspState) {
         const old = this._state;
         this._state = state;
@@ -277,6 +319,25 @@ export class RLanguageLsp implements ILanguageLsp {
 
                     return next(document, position, context, token);
                 },
+                workspace: {
+                    async configuration(params, token, next) {
+                        const fallback = await next(params, token);
+                        if (!Array.isArray(fallback)) {
+                            return fallback;
+                        }
+
+                        return params.items.map((item, index) => {
+                            const resource = item.scopeUri
+                                ? vscode.Uri.parse(item.scopeUri)
+                                : undefined;
+                            return mapArkLspConfiguration(
+                                item.section ?? undefined,
+                                fallback[index],
+                                getArkLspSettings(resource),
+                            );
+                        });
+                    },
+                },
             },
         };
 
@@ -291,6 +352,22 @@ export class RLanguageLsp implements ILanguageLsp {
         getLspOutputChannel().appendLine(message);
 
         this.client = new LanguageClient(id, this.languageClientName, serverOptions, clientOptions);
+        const client = this.client;
+
+        this.activationDisposables.push(vscode.workspace.onDidChangeConfiguration((event) => {
+            const canonicalChanged = event.affectsConfiguration('ark.lsp');
+            const compatibilityChanged = [
+                'positron.r.diagnostics',
+                'positron.r.symbols',
+                'positron.r.workspaceSymbols',
+                'positron.r.trace.server',
+            ].some((section) => event.affectsConfiguration(section));
+            if (!canonicalChanged && !compatibilityChanged) {
+                return;
+            }
+
+            this.scheduleConfigurationRefresh(client, true);
+        }));
 
         const out = new PromiseHandles<void>();
         this._initializing = out.promise;
@@ -307,6 +384,7 @@ export class RLanguageLsp implements ILanguageLsp {
                         this._initializing = undefined;
                         if (this.client) {
                             this.registerPositronLspExtensions(this.client);
+                            this.scheduleConfigurationRefresh(this.client, false);
                         }
                         out.resolve();
                     }

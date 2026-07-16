@@ -87,8 +87,17 @@
   "positron": {
     "minimumRVersion": "4.2.0",
     "binaryDependencies": {
-      "ark": "ark-0.1.251-242-2a72b5e",
+      "ark": "ark-0.1.252-14-6618e9a",
       "ret": "v0.1.2"
+    },
+    "binaryChecksums": {
+      "ark": {
+        "darwin-universal": "sha256:9f8b2f312bb995d7df43d467797c3a06860ae08ef6f34693d4e80357e5fb700e",
+        "linux-arm64": "sha256:78d1756c51fd8e0c791cbbc00aa6598b58dab444eff07a02bfd8354dbc1b272d",
+        "linux-x64": "sha256:da2198da734821aa709b2b2a5fd7266b8f3bc892a4f3d7cde77b9883eb297513",
+        "windows-arm64": "sha256:40aefd225d554d6f9095d409a1bfb9d2aa7c162ac4e604a3c4ab0af2b493e3ed",
+        "windows-x64": "sha256:978783f265d2d47dc500cbfa8c14cc2f99a5fe0fb9f3f8f2f241c30f0ea3f5ef"
+      }
     }
   },
   "contributes": {
@@ -506,6 +515,40 @@
           "default": true,
           "description": "Enable R package testthat discovery in the Test Explorer."
         },
+        "ark.lsp.diagnostics.enable": {
+          "scope": "window",
+          "type": "boolean",
+          "default": true,
+          "description": "Enable diagnostics from the Ark R language server."
+        },
+        "ark.lsp.symbols.includeAssignmentsInBlocks": {
+          "scope": "window",
+          "type": "boolean",
+          "default": false,
+          "description": "Include assigned objects inside braces in R document symbols, in addition to top-level assignments. Reopen files or restart the R language server for changes to take effect."
+        },
+        "ark.lsp.workspaceSymbols.includeCommentSections": {
+          "scope": "window",
+          "type": "boolean",
+          "default": false,
+          "description": "Include R comment sections such as '# Data loading ----' in workspace symbols."
+        },
+        "ark.lsp.trace.server": {
+          "scope": "window",
+          "type": "string",
+          "enum": [
+            "off",
+            "messages",
+            "verbose"
+          ],
+          "enumDescriptions": [
+            "Disable language server protocol tracing.",
+            "Trace messages exchanged with the R language server.",
+            "Trace messages and verbose protocol details. This may include source code and file paths."
+          ],
+          "default": "off",
+          "description": "Trace communication between VS Code and the Ark R language server."
+        },
         "packages.r.installer": {
           "type": "string",
           "default": "auto",
@@ -555,6 +598,19 @@
           ],
           "description": "Log level for external crates in ARK."
         },
+        "ark.kernel.env": {
+          "type": "object",
+          "default": {},
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Environment variables passed to the ARK kernel."
+        },
+        "ark.kernel.profile": {
+          "type": "string",
+          "default": "",
+          "description": "Optional ARK profiling filter. For example, use '*' for all contexts or '*>50' for contexts taking more than 50 ms. Restart the R session to apply."
+        },
         "ark.saveAndRestoreWorkspace": {
           "type": "boolean",
           "default": false,
@@ -572,6 +628,22 @@
           },
           "default": [],
           "description": "Extra command line arguments to pass to R."
+        },
+        "ark.defaultRepositories": {
+          "type": "string",
+          "enum": [
+            "auto",
+            "rstudio",
+            "posit-ppm",
+            "none"
+          ],
+          "default": "auto",
+          "description": "Default R repository configuration. Auto honors a Positron or RStudio repos.conf file and otherwise lets ARK choose."
+        },
+        "ark.packageManagerRepository": {
+          "type": "string",
+          "default": "",
+          "description": "Custom Posit Package Manager repository URL used when default repositories is set to auto."
         }
       }
     },

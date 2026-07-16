@@ -1,4 +1,5 @@
 import fs from 'fs';
+import crypto from 'crypto';
 import http from 'http';
 import https from 'https';
 import os from 'os';
@@ -67,13 +68,36 @@ function detectPlatform(explicitPlatform) {
     return `${normalizeOs(os.platform())}-${normalizeArch(os.arch())}`;
 }
 
-function readBinaryVersions() {
+function readBinaryManifest() {
     const pkg = JSON.parse(fs.readFileSync(path.join(repoRoot, 'package.json'), 'utf8'));
     const deps = pkg?.positron?.binaryDependencies;
     if (!deps || typeof deps !== 'object') {
         throw new Error('Missing positron.binaryDependencies in package.json');
     }
-    return deps;
+    return {
+        versions: deps,
+        checksums: pkg?.positron?.binaryChecksums ?? {},
+    };
+}
+
+function verifyChecksum(filePath, expectedDigest) {
+    if (!expectedDigest) {
+        return;
+    }
+
+    const [algorithm, expected] = expectedDigest.split(':', 2);
+    if (algorithm !== 'sha256' || !expected) {
+        throw new Error(`Unsupported checksum '${expectedDigest}' for ${path.basename(filePath)}`);
+    }
+
+    const actual = crypto.createHash(algorithm).update(fs.readFileSync(filePath)).digest('hex');
+    if (actual !== expected.toLowerCase()) {
+        throw new Error(
+            `Checksum mismatch for ${path.basename(filePath)}: expected ${expected}, got ${actual}`,
+        );
+    }
+
+    console.log(`Verified ${algorithm} checksum for ${path.basename(filePath)}`);
 }
 
 // Binary configuration: repo, naming conventions, etc.
@@ -177,7 +201,7 @@ function findFile(rootDir, filename) {
     return undefined;
 }
 
-async function installBinary(name, config, version, platform) {
+async function installBinary(name, config, version, platform, checksums) {
     const effectivePlatform = config.platformOverride ? config.platformOverride(platform) : platform;
     const executableName = config.binaryName(platform);
     const archiveFile = config.archivePattern(version, effectivePlatform);
@@ -192,6 +216,7 @@ async function installBinary(name, config, version, platform) {
         console.log(`Installing ${name} ${version} for ${platform}`);
         console.log(`Downloading ${downloadUrl}`);
         await download(downloadUrl, archivePath);
+        verifyChecksum(archivePath, checksums?.[name]?.[effectivePlatform]);
         extractArchive(archivePath, config.archiveType, extractDir);
 
         const extractedBinary = findFile(extractDir, executableName);
@@ -216,7 +241,7 @@ async function installBinary(name, config, version, platform) {
 async function main() {
     const { retries, platform: explicitPlatform } = parseArgs();
     const platform = detectPlatform(explicitPlatform);
-    const versions = readBinaryVersions();
+    const { versions, checksums } = readBinaryManifest();
 
     for (const [name, version] of Object.entries(versions)) {
         const config = BINARY_CONFIGS[name];
@@ -228,7 +253,7 @@ async function main() {
         let lastError;
         for (let attempt = 1; attempt <= retries; attempt += 1) {
             try {
-                await installBinary(name, config, version, platform);
+                await installBinary(name, config, version, platform, checksums);
                 lastError = undefined;
                 break;
             } catch (error) {

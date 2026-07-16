@@ -31,6 +31,35 @@ function getCliHyperlinkEnvironment(): Record<string, string> {
     };
 }
 
+function findReposConf(): string | undefined {
+    const configDirs: string[] = [];
+    const userConfigDir = process.env.XDG_CONFIG_HOME ??
+        (process.platform === 'win32'
+            ? process.env.APPDATA
+            : process.env.HOME ? path.join(process.env.HOME, '.config') : undefined);
+    if (userConfigDir) {
+        configDirs.push(userConfigDir);
+    }
+
+    const systemConfigDirs = process.env.XDG_CONFIG_DIRS?.split(path.delimiter).filter(Boolean) ??
+        (process.platform === 'win32' ? [] : ['/etc/xdg']);
+    configDirs.push(...systemConfigDirs);
+    if (process.platform !== 'win32') {
+        configDirs.push('/etc');
+    }
+
+    for (const product of ['rstudio', 'positron']) {
+        for (const configDir of configDirs) {
+            const reposConf = path.join(configDir, product, 'repos.conf');
+            if (fs.existsSync(reposConf)) {
+                return reposConf;
+            }
+        }
+    }
+
+    return undefined;
+}
+
 function setPixiEnvironmentVariables(
     env: Record<string, string>,
     environmentPath: string,
@@ -190,6 +219,7 @@ export async function createJupyterKernelSpec(
     const logLevel = config.get<string>('kernel.logLevel') ?? 'warn';
     const logLevelForeign = config.get<string>('kernel.logLevelExternal') ?? 'warn';
     const userEnv = config.get<Record<string, string>>('kernel.env') ?? {};
+    const profile = config.get<string>('kernel.profile')?.trim();
 
     const env: Record<string, string> = {
         RUST_BACKTRACE: '1',
@@ -198,6 +228,10 @@ export async function createJupyterKernelSpec(
         ...getCliHyperlinkEnvironment(),
         ...userEnv,
     };
+
+    if (profile) {
+        env.ARK_PROFILE = profile;
+    }
 
     if (rInstallation.environmentVariables) {
         Object.assign(env, rInstallation.environmentVariables);
@@ -254,8 +288,30 @@ export async function createJupyterKernelSpec(
         '--session-mode', sessionMode,
     ];
 
-    if (process.platform === 'win32' && rInstallation.packagerMetadata && isCondaMetadata(rInstallation.packagerMetadata)) {
+    if (profile) {
+        argv.push('--profile', '{profile_file}');
+    }
+
+    if (process.platform === 'win32' && rInstallation.packagerMetadata) {
         argv.push('--standard-dll-search-order');
+    }
+
+    const defaultRepositories = config.get<string>('defaultRepositories') ?? 'auto';
+    const packageManagerRepository = config.get<string>('packageManagerRepository')?.replace(/\/+$/, '');
+    if (defaultRepositories === 'auto') {
+        const reposConf = findReposConf();
+        if (reposConf) {
+            argv.push('--repos-conf', reposConf);
+        } else if (packageManagerRepository) {
+            argv.push('--default-ppm-repo', packageManagerRepository);
+        } else if (vscode.env.uiKind === vscode.UIKind.Web) {
+            argv.push('--default-repos', 'posit-ppm');
+        }
+    } else {
+        if (packageManagerRepository) {
+            log.warn('ark.packageManagerRepository is ignored unless ark.defaultRepositories is set to auto');
+        }
+        argv.push('--default-repos', defaultRepositories);
     }
 
     argv.push('--', '--interactive');

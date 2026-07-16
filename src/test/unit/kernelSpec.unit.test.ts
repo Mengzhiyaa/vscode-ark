@@ -72,9 +72,12 @@ suite('[Unit] kernel-spec', () => {
             'kernel.env': {
                 USER_FLAG: '1',
             },
+            'kernel.profile': '',
             saveAndRestoreWorkspace: false,
             extraArguments: [],
             quietMode: false,
+            defaultRepositories: 'auto',
+            packageManagerRepository: '',
         });
         (kernelModule as { getArkKernelPath: typeof kernelModule.getArkKernelPath }).getArkKernelPath =
             (() => '/tmp/ark') as typeof kernelModule.getArkKernelPath;
@@ -210,5 +213,59 @@ suite('[Unit] kernel-spec', () => {
         assert.strictEqual(spec.env?.CONDA_PREFIX, 'C:/miniconda/envs/r');
         assert.strictEqual(spec.env?.CONDA_EXE, 'C:/miniconda/Scripts/conda.exe');
         assert.ok(spec.env?.PATH?.includes('C:/miniconda/Scripts'));
+    });
+
+    test('passes profiling and custom package manager settings to ARK', async () => {
+        restoreConfiguration?.();
+        restoreConfiguration = stubArkConfiguration({
+            'kernel.logLevel': 'warn',
+            'kernel.logLevelExternal': 'warn',
+            'kernel.profile': '*>50',
+            defaultRepositories: 'auto',
+            packageManagerRepository: 'https://packagemanager.example.test/cran/latest/',
+            saveAndRestoreWorkspace: false,
+            extraArguments: [],
+            quietMode: false,
+        });
+        const installation = new RInstallation({
+            binpath: '/usr/bin/R',
+            homepath: '/usr/lib/R',
+            version: '4.5.0',
+        });
+
+        const spec = await createJupyterKernelSpec(makeContext(), installation, 'console', makeLogChannel());
+
+        assert.strictEqual(spec.env?.ARK_PROFILE, '*>50');
+        assert.deepStrictEqual(
+            spec.argv.slice(spec.argv.indexOf('--profile'), spec.argv.indexOf('--profile') + 2),
+            ['--profile', '{profile_file}'],
+        );
+        assert.deepStrictEqual(
+            spec.argv.slice(spec.argv.indexOf('--default-ppm-repo'), spec.argv.indexOf('--default-ppm-repo') + 2),
+            ['--default-ppm-repo', 'https://packagemanager.example.test/cran/latest'],
+        );
+    });
+
+    test('passes an explicit default repository choice to ARK', async () => {
+        restoreConfiguration?.();
+        restoreConfiguration = stubArkConfiguration({
+            defaultRepositories: 'posit-ppm',
+            packageManagerRepository: '',
+            saveAndRestoreWorkspace: false,
+            extraArguments: [],
+            quietMode: false,
+        });
+        const installation = new RInstallation({
+            binpath: '/usr/bin/R',
+            homepath: '/usr/lib/R',
+            version: '4.5.0',
+        });
+
+        const spec = await createJupyterKernelSpec(makeContext(), installation, 'console', makeLogChannel());
+
+        assert.deepStrictEqual(
+            spec.argv.slice(spec.argv.indexOf('--default-repos'), spec.argv.indexOf('--default-repos') + 2),
+            ['--default-repos', 'posit-ppm'],
+        );
     });
 });

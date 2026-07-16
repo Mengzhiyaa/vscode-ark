@@ -16,6 +16,7 @@ interface PackageJsonShape {
     devDependencies?: Record<string, string | undefined>;
     positron?: {
         binaryDependencies?: Record<string, string | undefined>;
+        binaryChecksums?: Record<string, Record<string, string | undefined> | undefined>;
     };
     contributes?: {
         languages?: Array<{ id?: string }>;
@@ -26,7 +27,14 @@ interface PackageJsonShape {
         keybindings?: Array<{ command?: string; key?: string; mac?: string; when?: string }>;
         menus?: Record<string, Array<{ command?: string }>>;
         viewsWelcome?: Array<{ view?: string; when?: string }>;
-        configuration?: { properties?: Record<string, { default?: unknown }> };
+        configuration?: {
+            properties?: Record<string, {
+                type?: string;
+                scope?: string;
+                default?: unknown;
+                enum?: unknown[];
+            }>;
+        };
     };
 }
 
@@ -55,7 +63,11 @@ suite('[Unit] R package manifest', () => {
         assert.strictEqual(packageJson.homepage, 'https://github.com/Mengzhiyaa/vscode-ark#readme');
         assert.strictEqual(packageJson.bugs?.url, 'https://github.com/Mengzhiyaa/vscode-ark/issues');
         assert.deepStrictEqual(packageJson.workspaces, ['webview']);
-        assert.strictEqual(packageJson.positron?.binaryDependencies?.ark, 'ark-0.1.251-242-2a72b5e');
+        assert.strictEqual(packageJson.positron?.binaryDependencies?.ark, 'ark-0.1.252-14-6618e9a');
+        assert.match(
+            packageJson.positron?.binaryChecksums?.ark?.['linux-x64'] ?? '',
+            /^sha256:[0-9a-f]{64}$/,
+        );
         assert.ok(packageJson.devDependencies?.['@vscode/vsce']);
         assert.ok(packageJson.devDependencies?.ovsx);
         assert.strictEqual(packageJson.scripts?.['vsce:package'], 'vsce package');
@@ -84,6 +96,28 @@ suite('[Unit] R package manifest', () => {
         );
         assert.strictEqual(packageJson.contributes?.notebookRenderer?.[0]?.entrypoint, 'resources/js/htmlwidget.js');
         assert.strictEqual(packageJson.contributes?.configuration?.properties?.['ark.r.testing']?.default, true);
+
+        const configuration = packageJson.contributes?.configuration?.properties ?? {};
+        assert.deepStrictEqual(
+            {
+                diagnostics: configuration['ark.lsp.diagnostics.enable']?.default,
+                blockAssignments: configuration['ark.lsp.symbols.includeAssignmentsInBlocks']?.default,
+                commentSections: configuration['ark.lsp.workspaceSymbols.includeCommentSections']?.default,
+                trace: configuration['ark.lsp.trace.server']?.default,
+            },
+            {
+                diagnostics: true,
+                blockAssignments: false,
+                commentSections: false,
+                trace: 'off',
+            },
+        );
+        assert.strictEqual(configuration['ark.lsp.diagnostics.enable']?.type, 'boolean');
+        assert.strictEqual(configuration['ark.lsp.trace.server']?.scope, 'window');
+        assert.deepStrictEqual(
+            configuration['ark.lsp.trace.server']?.enum,
+            ['off', 'messages', 'verbose'],
+        );
 
         const commands = new Set((packageJson.contributes?.commands ?? []).map((entry) => entry.command));
         assert.ok(commands.has('supervisor.startConsole'));
