@@ -254,6 +254,7 @@ suite('[Unit] RLanguageContribution', () => {
                 showWelcomePage: () => undefined,
             },
             positronPackagesService: makePackagesServiceStub(),
+            registerEnvironmentContributions: () => new vscode.Disposable(() => {}),
         };
 
         const contribution = new RLanguageContribution(makeContext(), api as ISupervisorFrameworkApi);
@@ -328,6 +329,7 @@ suite('[Unit] RLanguageContribution', () => {
                 showWelcomePage: () => undefined,
             },
             positronPackagesService: makePackagesServiceStub(),
+            registerEnvironmentContributions: () => new vscode.Disposable(() => {}),
         };
 
         const contribution = new RLanguageContribution(makeContext(), api as ISupervisorFrameworkApi);
@@ -411,6 +413,7 @@ suite('[Unit] RLanguageContribution', () => {
                 showWelcomePage: () => undefined,
             },
             positronPackagesService: makePackagesServiceStub(),
+            registerEnvironmentContributions: () => new vscode.Disposable(() => {}),
         };
 
         const contribution = new RLanguageContribution(makeContext(), api as ISupervisorFrameworkApi);
@@ -536,6 +539,7 @@ suite('[Unit] RLanguageContribution', () => {
                 showWelcomePage: () => undefined,
             },
             positronPackagesService: makePackagesServiceStub(),
+            registerEnvironmentContributions: () => new vscode.Disposable(() => {}),
         };
 
         const contribution = new RLanguageContribution(makeContext(), {} as ISupervisorFrameworkApi);
@@ -645,6 +649,7 @@ suite('[Unit] RLanguageContribution', () => {
                 showWelcomePage: () => undefined,
             },
             positronPackagesService: makePackagesServiceStub(),
+            registerEnvironmentContributions: () => new vscode.Disposable(() => {}),
         };
 
         const contribution = new RLanguageContribution(makeContext(), {} as ISupervisorFrameworkApi);
