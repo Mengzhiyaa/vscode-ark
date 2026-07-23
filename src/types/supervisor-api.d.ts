@@ -269,11 +269,21 @@ export interface ILanguageRuntimeProvider<TInstallation = unknown> {
     shouldRecommendForWorkspace?(): Promise<boolean>;
     getSessionIdPrefix?(sessionMode: LanguageSessionMode): string;
 }
+export type BinaryArchiveType = 'zip' | 'tar.gz';
 export interface BinaryDefinition {
     repo: string;
+    /**
+     * GitHub release tag used to download the binary.
+     */
     version?: string;
+    /**
+     * Version emitted by `<binary> --version` when it differs from the
+     * GitHub release tag.
+     */
+    reportedVersion?: string;
     binaryName: string;
     archivePattern: (version: string, platform: string) => string;
+    archiveType?: BinaryArchiveType;
     installDir: string;
     platformOverride?: (platform: string) => string;
 }
