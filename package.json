@@ -70,6 +70,7 @@
     "watch": "node esbuild.mjs --watch",
     "compile-tests": "node -e \"require('fs').rmSync('out', { recursive: true, force: true })\" && tsc -p . --outDir out",
     "install:binaries": "node scripts/install-binaries.mjs",
+    "dev:check": "node scripts/check-dev-environment.mjs && npm run verify:supervisor-api",
     "build:webview": "npm --prefix webview run build",
     "watch:webview": "npm --prefix webview run dev",
     "check:webview": "npm --prefix webview run check",

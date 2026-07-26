@@ -13,6 +13,30 @@ Standalone R language extension for VS Code, built on top of the local
 - Run the extension unit suite with `npm run test:unit:ext`.
   Linux headless runs use `xvfb-run` automatically when needed.
 
+### Debugging with F5
+
+Open `vscode-ark` as the VS Code workspace and choose one of these launch
+configurations:
+
+- `Run Ark + Supervisor` builds the Ark and Supervisor webview assets, starts
+  both extension bundle watchers, and opens an Extension Development Host for
+  manual testing.
+- `Ark Extension Tests` performs the same split-extension preparation, compiles
+  `out/test`, and runs the Mocha extension test entrypoint inside an Extension
+  Development Host.
+
+The pre-launch check verifies the copied Supervisor API and confirms that the
+Ark, RET, and Kallichore binaries can execute on the current platform. Binary
+downloads are deliberately kept out of the F5 path. If the check reports a
+missing or incompatible binary, run `npm run install:binaries` in both
+`vscode-ark` and `../vscode-supervisor`.
+
+Both repositories must have their dependencies installed. The default sibling
+Supervisor checkout for F5 is `../vscode-supervisor`, matching the development
+extension paths in `.vscode/launch.json`. The command-line test runner also
+supports `SUPERVISOR_DEV_EXTENSION_PATH` when a different checkout layout is
+required.
+
 The child repo keeps the R language contributions, runtime wiring, syntax
 assets, and bundled `ark` runtime resources. During local test runs it loads
 `../vscode-supervisor` as a second development extension when that sibling repo

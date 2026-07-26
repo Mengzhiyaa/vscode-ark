@@ -2,6 +2,42 @@
   "version": "2.0.0",
   "tasks": [
     {
+      "label": "check ark development environment",
+      "type": "npm",
+      "script": "dev:check",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "build ark webview assets",
+      "type": "npm",
+      "script": "build:webview",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "build supervisor webview assets",
+      "type": "shell",
+      "command": "npm run check:webview && npm run build:webview && npm run copy:duckdb",
+      "options": {
+        "cwd": "${workspaceFolder}/../vscode-supervisor"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "prepare split extension assets",
+      "dependsOn": [
+        "build ark webview assets",
+        "build supervisor webview assets"
+      ],
+      "dependsOrder": "parallel",
+      "problemMatcher": []
+    },
+    {
       "label": "watch ark extension",
       "type": "shell",
       "command": "npm run watch",
@@ -16,7 +52,7 @@
         "background": {
           "activeOnStart": true,
           "beginsPattern": ".+",
-          "endsPattern": "\\[esbuild\\] watching for changes\\.\\.\\."
+          "endsPattern": "\\[watch\\] build finished, watching for changes\\.\\.\\."
         }
       }
     },
@@ -35,7 +71,7 @@
         "background": {
           "activeOnStart": true,
           "beginsPattern": ".+",
-          "endsPattern": "\\[esbuild\\] watching for changes\\.\\.\\."
+          "endsPattern": "\\[watch\\] build finished, watching for changes\\.\\.\\."
         }
       }
     },
@@ -45,7 +81,40 @@
         "watch ark extension",
         "watch supervisor extension"
       ],
-      "dependsOrder": "parallel"
+      "dependsOrder": "parallel",
+      "problemMatcher": []
+    },
+    {
+      "label": "prepare ark extension development",
+      "dependsOn": [
+        "check ark development environment",
+        "prepare split extension assets",
+        "watch split extensions"
+      ],
+      "dependsOrder": "sequence",
+      "problemMatcher": [],
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      }
+    },
+    {
+      "label": "compile ark extension tests",
+      "type": "npm",
+      "script": "compile-tests",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": "$tsc"
+    },
+    {
+      "label": "prepare ark extension tests",
+      "dependsOn": [
+        "compile ark extension tests",
+        "prepare ark extension development"
+      ],
+      "dependsOrder": "sequence",
+      "problemMatcher": []
     }
   ]
 }

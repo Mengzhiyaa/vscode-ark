@@ -2,7 +2,7 @@
   "version": "0.2.0",
   "configurations": [
     {
-      "name": "Run Extension",
+      "name": "Run Ark + Supervisor",
       "type": "extensionHost",
       "request": "launch",
       "args": [
@@ -13,7 +13,23 @@
         "${workspaceFolder}/dist/**/*.js",
         "${workspaceFolder}/../vscode-supervisor/dist/**/*.js"
       ],
-      "preLaunchTask": "npm: watch"
+      "preLaunchTask": "prepare ark extension development"
+    },
+    {
+      "name": "Ark Extension Tests",
+      "type": "extensionHost",
+      "request": "launch",
+      "args": [
+        "--extensionDevelopmentPath=${workspaceFolder}",
+        "--extensionDevelopmentPath=${workspaceFolder}/../vscode-supervisor",
+        "--extensionTestsPath=${workspaceFolder}/out/test/index"
+      ],
+      "outFiles": [
+        "${workspaceFolder}/out/test/**/*.js",
+        "${workspaceFolder}/dist/**/*.js",
+        "${workspaceFolder}/../vscode-supervisor/dist/**/*.js"
+      ],
+      "preLaunchTask": "prepare ark extension tests"
     }
   ]
 }
