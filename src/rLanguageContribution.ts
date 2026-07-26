@@ -426,8 +426,6 @@ export class RLanguageRuntimeProvider implements ILanguageRuntimeProvider<RInsta
 }
 
 export class RBinaryProvider implements IBinaryProvider {
-    readonly ownerId = R_LANGUAGE_ID;
-
     constructor(private readonly _extensionContext: vscode.ExtensionContext) {}
 
     getBinaryDefinitions(): Readonly<Record<string, BinaryDefinition>> {
@@ -442,11 +440,13 @@ export class RBinaryProvider implements IBinaryProvider {
             ark: {
                 repo: 'posit-dev/positron-ark',
                 version: arkVersion,
+                reportedVersion: toArkReportedVersion(arkVersion),
                 binaryName: process.platform === 'win32' ? 'ark.exe' : 'ark',
                 archivePattern: (version, platform) => {
                     const assetVersion = version.replace(/^ark-/, '');
                     return `ark-${assetVersion}-${platform}.zip`;
                 },
+                archiveType: 'zip',
                 installDir: path.join(
                     this._extensionContext.extensionPath,
                     'resources',
@@ -460,8 +460,11 @@ export class RBinaryProvider implements IBinaryProvider {
             defs.ret = {
                 repo: 'Mengzhiyaa/r-environment-tools',
                 version: retVersion,
+                reportedVersion: retVersion.replace(/^v/, ''),
                 binaryName: process.platform === 'win32' ? 'ret.exe' : 'ret',
-                archivePattern: (version, platform) => `ret-${version}-${platform}.zip`,
+                archivePattern: (version, platform) =>
+                    `ret-${version}-${platform}.tar.gz`,
+                archiveType: 'tar.gz',
                 installDir: path.join(
                     this._extensionContext.extensionPath,
                     'resources',
@@ -472,6 +475,17 @@ export class RBinaryProvider implements IBinaryProvider {
 
         return defs;
     }
+}
+
+function toArkReportedVersion(releaseVersion: string): string {
+    const match = releaseVersion.match(
+        /^ark-(\d+\.\d+\.\d+)-(\d+)-([0-9a-f]+)$/i,
+    );
+    if (!match) {
+        return releaseVersion.replace(/^ark-/, '');
+    }
+
+    return `${match[1]}+${match[2]}.${match[3]}`;
 }
 
 export class RLanguageContribution implements ILanguageExtensionContribution {

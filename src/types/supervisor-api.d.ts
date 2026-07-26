@@ -288,7 +288,6 @@ export interface BinaryDefinition {
     platformOverride?: (platform: string) => string;
 }
 export interface IBinaryProvider {
-    readonly ownerId: string;
     getBinaryDefinitions(): Readonly<Record<string, BinaryDefinition>>;
 }
 export interface Utf8Position {
@@ -700,7 +699,6 @@ export interface ISupervisorFrameworkApi {
     registerLanguageSupport<TInstallation = unknown>(registration: ILanguageSupportRegistration<TInstallation>): Promise<void>;
     registerLanguageRuntime<TInstallation = unknown>(registration: ILanguageRuntimeRegistration<TInstallation> | ILanguageSupportRegistration<TInstallation> | ILanguageRuntimeProvider<TInstallation>): Promise<void>;
     registerLspFactory(factory: ILanguageLspFactory): Promise<void>;
-    registerBinaryProvider(provider: IBinaryProvider): Promise<void>;
     registerDataExplorerBackendProvider(provider: IDataExplorerBackendProvider): vscode.Disposable;
     openDataExplorer(uri: vscode.Uri, providerId?: string): Promise<void>;
     registerDataConnectionDriver(driver: IDataConnectionDriver): vscode.Disposable;

@@ -74,7 +74,7 @@ suite('[Unit] Split R extension entry', () => {
         assert.strictEqual(registrations.length, 1, 'Expected one language registration');
         const registration = registrations[0] as {
             runtimeProvider?: { languageId?: string };
-            binaryProvider?: { ownerId?: string };
+            binaryProvider?: { getBinaryDefinitions?: () => unknown };
             languageContribution?: unknown;
             webviewAssets?: {
                 localResourceRoots?: readonly vscode.Uri[];
@@ -87,7 +87,10 @@ suite('[Unit] Split R extension entry', () => {
         };
 
         assert.strictEqual(registration.runtimeProvider?.languageId, 'r');
-        assert.strictEqual(registration.binaryProvider?.ownerId, 'r');
+        assert.strictEqual(
+            typeof registration.binaryProvider?.getBinaryDefinitions,
+            'function',
+        );
         assert.ok(registration.languageContribution, 'Expected an R language contribution instance');
         assert.ok(
             registration.webviewAssets?.monacoSupportModule?.path.endsWith(

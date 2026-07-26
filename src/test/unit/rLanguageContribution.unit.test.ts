@@ -12,7 +12,10 @@ import type {
     RuntimeStartupPhase,
 } from '../../types/supervisor-api';
 import { RCommandIds } from '../../rCommandIds';
-import { RLanguageContribution } from '../../rLanguageContribution';
+import {
+    RBinaryProvider,
+    RLanguageContribution,
+} from '../../rLanguageContribution';
 import { RInstallation } from '../../runtime/r-installation';
 import * as rInstallationModule from '../../runtime/r-installation';
 
@@ -173,6 +176,46 @@ suite('[Unit] RLanguageContribution', () => {
         } else {
             setActiveTextEditor(undefined);
         }
+    });
+
+    test('describes Ark and RET release assets separately from reported versions', () => {
+        const context = {
+            extensionPath: '/extension',
+            extension: {
+                packageJSON: {
+                    positron: {
+                        binaryDependencies: {
+                            ark: 'ark-0.1.252-14-6618e9a',
+                            ret: 'v0.1.2',
+                        },
+                    },
+                },
+            },
+        } as unknown as vscode.ExtensionContext;
+        const definitions = new RBinaryProvider(context).getBinaryDefinitions();
+
+        assert.strictEqual(
+            definitions.ark.reportedVersion,
+            '0.1.252+14.6618e9a',
+        );
+        assert.strictEqual(definitions.ark.archiveType, 'zip');
+        assert.strictEqual(
+            definitions.ark.archivePattern(
+                definitions.ark.version!,
+                'linux-x64',
+            ),
+            'ark-0.1.252-14-6618e9a-linux-x64.zip',
+        );
+
+        assert.strictEqual(definitions.ret.reportedVersion, '0.1.2');
+        assert.strictEqual(definitions.ret.archiveType, 'tar.gz');
+        assert.strictEqual(
+            definitions.ret.archivePattern(
+                definitions.ret.version!,
+                'linux-x64',
+            ),
+            'ret-v0.1.2-linux-x64.tar.gz',
+        );
     });
 
     test('registers RRuntimeManager and reveals console without stealing focus for preferred runtimes', async () => {
