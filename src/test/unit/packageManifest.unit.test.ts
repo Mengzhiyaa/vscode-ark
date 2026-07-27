@@ -11,6 +11,7 @@ interface PackageJsonShape {
     repository?: { type?: string; url?: string };
     main?: string;
     extensionDependencies?: string[];
+    activationEvents?: string[];
     scripts?: Record<string, string | undefined>;
     workspaces?: string[];
     devDependencies?: Record<string, string | undefined>;
@@ -127,6 +128,7 @@ suite('[Unit] R package manifest', () => {
         assert.ok(commands.has('supervisor.insertAssignmentOperator'));
         assert.ok(commands.has('supervisor.insertPipeOperator'));
         assert.ok(commands.has('supervisor.help.showHelpAtCursor'));
+        assert.ok(!commands.has('supervisor.help.find'));
         assert.ok(commands.has('r.packageLoad'));
         assert.ok(commands.has('r.packageTest'));
         assert.ok(commands.has('r.sourceCurrentFile'));
@@ -158,6 +160,8 @@ suite('[Unit] R package manifest', () => {
         assert.ok(testingWelcomeStates.has('isRPackage && config.ark.r.testing && testthatIsConfigured && !testthatHasTests'));
 
         const keybindings = packageJson.contributes?.keybindings ?? [];
+        assert.ok(!keybindings.some((entry) => entry.command === 'supervisor.help.find'));
+        assert.ok(!packageJson.activationEvents?.includes('onCommand:supervisor.help.find'));
         assert.ok(keybindings.some((entry) =>
             entry.command === 'supervisor.console.executeCode' &&
             entry.key === 'ctrl+enter' &&

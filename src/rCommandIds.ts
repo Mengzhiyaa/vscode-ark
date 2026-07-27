@@ -8,7 +8,6 @@ export const RCommandIds = {
     helpShowHelpAtCursor: 'supervisor.help.showHelpAtCursor',
     helpLookupHelpTopic: 'supervisor.help.lookupHelpTopic',
     helpShowWelcome: 'supervisor.help.showWelcome',
-    helpFind: 'supervisor.help.find',
     createNewFile: 'r.createNewFile',
     insertSection: 'r.insertSection',
     packageLoad: 'r.packageLoad',

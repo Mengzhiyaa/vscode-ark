@@ -40,7 +40,6 @@
     "onCommand:supervisor.help.showHelpAtCursor",
     "onCommand:supervisor.help.lookupHelpTopic",
     "onCommand:supervisor.help.showWelcome",
-    "onCommand:supervisor.help.find",
     "onCommand:r.createNewFile",
     "onCommand:r.insertSection",
     "onCommand:r.packageLoad",
@@ -240,12 +239,6 @@
         "command": "supervisor.help.showWelcome",
         "title": "Show Help Welcome",
         "category": "Ark Help"
-      },
-      {
-        "command": "supervisor.help.find",
-        "title": "Find in Help",
-        "category": "Ark Help",
-        "icon": "$(search)"
       },
       {
         "command": "r.createNewFile",
@@ -495,12 +488,6 @@
         "command": "supervisor.help.showHelpAtCursor",
         "key": "f1",
         "when": "editorTextFocus && editorLangId == r"
-      },
-      {
-        "command": "supervisor.help.find",
-        "key": "ctrl+f",
-        "mac": "cmd+f",
-        "when": "view == supervisor.help"
       }
     ],
     "configuration": {

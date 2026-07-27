@@ -121,11 +121,5 @@ export function registerHelpActions(
         })
     );
 
-    disposables.push(
-        vscode.commands.registerCommand(RCommandIds.helpFind, async () => {
-            await positronHelpService.find();
-        })
-    );
-
     return disposables;
 }

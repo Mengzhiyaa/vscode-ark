@@ -144,6 +144,19 @@ function makeRuntimeSession(
         onDidChangeRuntimeState: createEventStub(),
         onDidEndSession: createEventStub(),
         onDidChangeWorkingDirectory: createEventStub(),
+        onDidReceiveRuntimeMessage: createEventStub(),
+        onDidReceiveRuntimeMessageStream: createEventStub(),
+        onDidReceiveRuntimeMessageInput: createEventStub(),
+        onDidReceiveRuntimeMessageError: createEventStub(),
+        onDidReceiveRuntimeMessageOutput: createEventStub(),
+        onDidReceiveRuntimeMessageResult: createEventStub(),
+        onDidReceiveRuntimeMessageState: createEventStub(),
+        onDidReceiveRuntimeMessagePrompt: createEventStub(),
+        onDidReceiveRuntimeMessageClearOutput: createEventStub(),
+        onDidReceiveRuntimeMessageUpdateOutput: createEventStub(),
+        onDidReceiveRuntimeMessageIPyWidget: createEventStub(),
+        onDidReceiveRuntimeMessageDebugEvent: createEventStub(),
+        onDidReceiveRuntimeMessageDebugReply: createEventStub(),
         activateLsp: async () => {
             counters.activateLsp += 1;
         },
@@ -166,7 +179,14 @@ function makeRuntimeSession(
         watchRuntimeClient: () => new vscode.Disposable(() => undefined),
         waitLsp: async () => undefined,
         getRuntimeState: () => state,
+        createClient: async () => undefined,
+        listClients: async () => ({}),
+        replyToPrompt: async () => undefined,
         interrupt: async () => undefined,
+        setWorkingDirectory: async () => undefined,
+        restart: async () => undefined,
+        shutdown: async () => undefined,
+        forceQuit: async () => undefined,
     };
 }
 
