@@ -10,14 +10,26 @@ import { fileURLToPath } from 'url';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const args = process.argv.slice(2);
+const packageJsonPath = path.join(repoRoot, 'package.json');
+const ARK_RELEASES_API = 'https://api.github.com/repos/posit-dev/positron-ark/releases?per_page=100';
+const ARK_CHECKSUM_PLATFORMS = [
+    'darwin-universal',
+    'linux-arm64',
+    'linux-x64',
+    'windows-arm64',
+    'windows-x64',
+];
 
 function parseArgs() {
+    let latestArk = false;
     let retries = 1;
     let platform;
 
     for (let index = 0; index < args.length; index += 1) {
         const arg = args[index];
-        if (arg === '--retry') {
+        if (arg === '--latest-ark') {
+            latestArk = true;
+        } else if (arg === '--retry') {
             retries = Number.parseInt(args[index + 1] ?? '1', 10) || 1;
             index += 1;
         } else if (arg === '--platform') {
@@ -26,7 +38,7 @@ function parseArgs() {
         }
     }
 
-    return { retries, platform };
+    return { latestArk, retries, platform };
 }
 
 function normalizeOs(osName) {
@@ -68,8 +80,11 @@ function detectPlatform(explicitPlatform) {
     return `${normalizeOs(os.platform())}-${normalizeArch(os.arch())}`;
 }
 
-function readBinaryManifest() {
-    const pkg = JSON.parse(fs.readFileSync(path.join(repoRoot, 'package.json'), 'utf8'));
+function readPackageManifest() {
+    return JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
+}
+
+function readBinaryManifest(pkg = readPackageManifest()) {
     const deps = pkg?.positron?.binaryDependencies;
     if (!deps || typeof deps !== 'object') {
         throw new Error('Missing positron.binaryDependencies in package.json');
@@ -78,6 +93,17 @@ function readBinaryManifest() {
         versions: deps,
         checksums: pkg?.positron?.binaryChecksums ?? {},
     };
+}
+
+function updateArkManifest(pkg, version, checksums) {
+    if (!pkg?.positron?.binaryDependencies || !pkg?.positron?.binaryChecksums) {
+        throw new Error('Missing positron binary metadata in package.json');
+    }
+
+    pkg.positron.binaryDependencies.ark = version;
+    pkg.positron.binaryChecksums.ark = checksums;
+    fs.writeFileSync(packageJsonPath, `${JSON.stringify(pkg, null, 2)}\n`);
+    console.log(`Updated package.json to Ark ${version}`);
 }
 
 function verifyChecksum(filePath, expectedDigest) {
@@ -122,6 +148,141 @@ const BINARY_CONFIGS = {
         platformOverride: undefined,
     },
 };
+
+function requestJson(url) {
+    return new Promise((resolve, reject) => {
+        https.get(url, {
+            headers: {
+                Accept: 'application/vnd.github+json',
+                'User-Agent': 'vscode-ark-binary-installer',
+                'X-GitHub-Api-Version': '2022-11-28',
+            },
+        }, (response) => {
+            let body = '';
+            response.setEncoding('utf8');
+            response.on('data', (chunk) => {
+                body += chunk;
+            });
+            response.on('end', () => {
+                if (response.statusCode !== 200) {
+                    reject(new Error(
+                        `GitHub releases request failed: HTTP ${response.statusCode}: ${body.slice(0, 200)}`,
+                    ));
+                    return;
+                }
+
+                try {
+                    resolve({
+                        body: JSON.parse(body),
+                        link: response.headers.link,
+                    });
+                } catch (error) {
+                    reject(new Error(
+                        `Invalid response from GitHub releases API: ${error instanceof Error ? error.message : String(error)}`,
+                    ));
+                }
+            });
+        }).on('error', reject);
+    });
+}
+
+function nextPageUrl(linkHeader) {
+    if (!linkHeader) {
+        return undefined;
+    }
+
+    for (const part of linkHeader.split(',')) {
+        const match = part.trim().match(/^<([^>]+)>;\s*rel="([^"]+)"$/);
+        if (match?.[2] === 'next') {
+            return match[1];
+        }
+    }
+
+    return undefined;
+}
+
+function arkReleaseChecksums(release) {
+    const assets = new Map(
+        release.assets.map((asset) => [asset.name, asset]),
+    );
+    const checksums = {};
+
+    for (const platform of ARK_CHECKSUM_PLATFORMS) {
+        const archiveName = BINARY_CONFIGS.ark.archivePattern(release.tag_name, platform);
+        const asset = assets.get(archiveName);
+        if (!asset || typeof asset.digest !== 'string' || !/^sha256:[0-9a-f]{64}$/i.test(asset.digest)) {
+            return undefined;
+        }
+        checksums[platform] = asset.digest.toLowerCase();
+    }
+
+    return checksums;
+}
+
+function parseArkReleaseVersion(tagName) {
+    const match = tagName.match(
+        /^ark-(\d+)\.(\d+)\.(\d+)-(\d+)(?:-[0-9a-f]+)?$/i,
+    );
+    if (!match) {
+        return undefined;
+    }
+
+    return match.slice(1).map((part) => Number.parseInt(part, 10));
+}
+
+function compareArkReleaseVersions(left, right) {
+    for (let index = 0; index < left.length; index += 1) {
+        if (left[index] !== right[index]) {
+            return right[index] - left[index];
+        }
+    }
+    return 0;
+}
+
+async function resolveLatestArkRelease() {
+    const releases = [];
+    let nextUrl = ARK_RELEASES_API;
+
+    while (nextUrl) {
+        const response = await requestJson(nextUrl);
+        if (!Array.isArray(response.body)) {
+            throw new Error('GitHub releases API returned an unexpected response');
+        }
+        releases.push(...response.body);
+        nextUrl = nextPageUrl(response.link);
+    }
+
+    const candidates = releases
+        .filter((release) =>
+            !release.draft &&
+            typeof release.tag_name === 'string' &&
+            typeof release.published_at === 'string' &&
+            Array.isArray(release.assets)
+        )
+        .map((release) => ({
+            release,
+            checksums: arkReleaseChecksums(release),
+            version: parseArkReleaseVersion(release.tag_name),
+        }))
+        .filter((candidate) => candidate.checksums && candidate.version)
+        .sort((left, right) => {
+            const versionOrder = compareArkReleaseVersions(left.version, right.version);
+            return versionOrder || Date.parse(right.release.published_at) - Date.parse(left.release.published_at);
+        });
+
+    if (candidates.length === 0) {
+        throw new Error('No published Ark release with complete checksummed assets was found');
+    }
+
+    const latest = candidates[0];
+    console.log(
+        `Latest Ark release is ${latest.release.tag_name} (published ${latest.release.published_at})`,
+    );
+    return {
+        version: latest.release.tag_name,
+        checksums: latest.checksums,
+    };
+}
 
 function download(url, destination) {
     return new Promise((resolve, reject) => {
@@ -226,10 +387,23 @@ async function installBinary(name, config, version, platform, checksums) {
 
         fs.mkdirSync(installDir, { recursive: true });
         const destination = path.join(installDir, executableName);
-        fs.copyFileSync(extractedBinary, destination);
+        const stagedDestination = path.join(
+            installDir,
+            `.${executableName}.${process.pid}.tmp`,
+        );
 
-        if (process.platform !== 'win32') {
-            fs.chmodSync(destination, 0o755);
+        try {
+            fs.copyFileSync(extractedBinary, stagedDestination);
+            if (process.platform !== 'win32') {
+                fs.chmodSync(stagedDestination, 0o755);
+            }
+
+            if (process.platform === 'win32') {
+                fs.rmSync(destination, { force: true });
+            }
+            fs.renameSync(stagedDestination, destination);
+        } finally {
+            fs.rmSync(stagedDestination, { force: true });
         }
 
         console.log(`Installed ${destination}`);
@@ -238,10 +412,40 @@ async function installBinary(name, config, version, platform, checksums) {
     }
 }
 
+async function installWithRetries(name, config, version, platform, checksums, retries) {
+    let lastError;
+    for (let attempt = 1; attempt <= retries; attempt += 1) {
+        try {
+            await installBinary(name, config, version, platform, checksums);
+            return;
+        } catch (error) {
+            lastError = error;
+            console.error(`${name} attempt ${attempt}/${retries} failed: ${error instanceof Error ? error.message : String(error)}`);
+        }
+    }
+
+    throw lastError;
+}
+
 async function main() {
-    const { retries, platform: explicitPlatform } = parseArgs();
+    const { latestArk, retries, platform: explicitPlatform } = parseArgs();
     const platform = detectPlatform(explicitPlatform);
-    const { versions, checksums } = readBinaryManifest();
+    const pkg = readPackageManifest();
+    const { versions, checksums } = readBinaryManifest(pkg);
+
+    if (latestArk) {
+        const latest = await resolveLatestArkRelease();
+        await installWithRetries(
+            'ark',
+            BINARY_CONFIGS.ark,
+            latest.version,
+            platform,
+            { ark: latest.checksums },
+            retries,
+        );
+        updateArkManifest(pkg, latest.version, latest.checksums);
+        return;
+    }
 
     for (const [name, version] of Object.entries(versions)) {
         const config = BINARY_CONFIGS[name];
@@ -250,21 +454,7 @@ async function main() {
             continue;
         }
 
-        let lastError;
-        for (let attempt = 1; attempt <= retries; attempt += 1) {
-            try {
-                await installBinary(name, config, version, platform, checksums);
-                lastError = undefined;
-                break;
-            } catch (error) {
-                lastError = error;
-                console.error(`${name} attempt ${attempt}/${retries} failed: ${error instanceof Error ? error.message : String(error)}`);
-            }
-        }
-
-        if (lastError) {
-            throw lastError;
-        }
+        await installWithRetries(name, config, version, platform, checksums, retries);
     }
 }
 

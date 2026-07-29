@@ -64,7 +64,7 @@ suite('[Unit] R package manifest', () => {
         assert.strictEqual(packageJson.homepage, 'https://github.com/Mengzhiyaa/vscode-ark#readme');
         assert.strictEqual(packageJson.bugs?.url, 'https://github.com/Mengzhiyaa/vscode-ark/issues');
         assert.deepStrictEqual(packageJson.workspaces, ['webview']);
-        assert.strictEqual(packageJson.positron?.binaryDependencies?.ark, 'ark-0.1.252-14-6618e9a');
+        assert.strictEqual(packageJson.positron?.binaryDependencies?.ark, 'ark-0.1.252-486-d0569cc');
         assert.match(
             packageJson.positron?.binaryChecksums?.ark?.['linux-x64'] ?? '',
             /^sha256:[0-9a-f]{64}$/,
@@ -73,6 +73,7 @@ suite('[Unit] R package manifest', () => {
         assert.ok(packageJson.devDependencies?.ovsx);
         assert.strictEqual(packageJson.scripts?.['vsce:package'], 'vsce package');
         assert.strictEqual(packageJson.scripts?.['install:binaries'], 'node scripts/install-binaries.mjs');
+        assert.strictEqual(packageJson.scripts?.['update:ark'], 'node scripts/install-binaries.mjs --latest-ark');
         assert.strictEqual(packageJson.scripts?.['build:webview'], 'npm --prefix webview run build');
         assert.strictEqual(packageJson.scripts?.['build'], 'npm run build:webview && npm run compile');
         assert.strictEqual(packageJson.scripts?.['sync:supervisor-api'], 'node scripts/sync-supervisor-api.mjs');

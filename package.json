@@ -69,6 +69,7 @@
     "watch": "node esbuild.mjs --watch",
     "compile-tests": "node -e \"require('fs').rmSync('out', { recursive: true, force: true })\" && tsc -p . --outDir out",
     "install:binaries": "node scripts/install-binaries.mjs",
+    "update:ark": "node scripts/install-binaries.mjs --latest-ark",
     "dev:check": "node scripts/check-dev-environment.mjs && npm run verify:supervisor-api",
     "build:webview": "npm --prefix webview run build",
     "watch:webview": "npm --prefix webview run dev",
@@ -87,16 +88,16 @@
   "positron": {
     "minimumRVersion": "4.2.0",
     "binaryDependencies": {
-      "ark": "ark-0.1.252-14-6618e9a",
+      "ark": "ark-0.1.252-486-d0569cc",
       "ret": "v0.1.2"
     },
     "binaryChecksums": {
       "ark": {
-        "darwin-universal": "sha256:9f8b2f312bb995d7df43d467797c3a06860ae08ef6f34693d4e80357e5fb700e",
-        "linux-arm64": "sha256:78d1756c51fd8e0c791cbbc00aa6598b58dab444eff07a02bfd8354dbc1b272d",
-        "linux-x64": "sha256:da2198da734821aa709b2b2a5fd7266b8f3bc892a4f3d7cde77b9883eb297513",
-        "windows-arm64": "sha256:40aefd225d554d6f9095d409a1bfb9d2aa7c162ac4e604a3c4ab0af2b493e3ed",
-        "windows-x64": "sha256:978783f265d2d47dc500cbfa8c14cc2f99a5fe0fb9f3f8f2f241c30f0ea3f5ef"
+        "darwin-universal": "sha256:28d057ceadb1da19fa8ffd5afde2ba044afcaf6dc23cb1d120ab74e4590c0b78",
+        "linux-arm64": "sha256:d2406a5c950cdd9ba5aa79ff4820b7bcee73067a53daedf975ad33d264c89060",
+        "linux-x64": "sha256:380e9595b42499bc455e4e78070eb0b30d3524d54c374d57491ddf27fba6c9dd",
+        "windows-arm64": "sha256:e38d6c540f3895d1c9b2f82ae0297314286cdb34dbfb3cb0369b17e73548a648",
+        "windows-x64": "sha256:8b375b098fd48c549f0b2d6ac03d521c4f31bf3be98bcbf392f8c4d82ae916c3"
       }
     }
   },

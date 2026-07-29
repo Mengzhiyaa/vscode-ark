@@ -31,6 +31,11 @@ downloads are deliberately kept out of the F5 path. If the check reports a
 missing or incompatible binary, run `npm run install:binaries` in both
 `vscode-ark` and `../vscode-supervisor`.
 
+To update the bundled Ark kernel, run `npm run update:ark`. The command finds
+the highest Ark release version (including prereleases), verifies the downloaded
+asset, replaces `resources/ark/ark`, and updates the Ark version and all
+supported-platform checksums in `package.json`.
+
 Both repositories must have their dependencies installed. The default sibling
 Supervisor checkout for F5 is `../vscode-supervisor`, matching the development
 extension paths in `.vscode/launch.json`. The command-line test runner also
@@ -50,6 +55,7 @@ dependency flow.
 ## CI And Release
 
 - `npm run install:binaries` installs the target-platform `ark` runtime into `resources/ark/`.
+- `npm run update:ark` replaces the bundled Ark runtime with the highest available release version and records its checksums.
 - `.github/workflows/ci.yml` verifies build/tests, packages target VSIX artifacts for branch pushes, and republishes them into a single `CI Pre-release` GitHub prerelease.
 - The CI prerelease is recreated from the fixed `ci-latest` tag on each `main`/`master` push so it stays at the top of the Releases page and always carries the newest CI VSIX files.
 - `.github/workflows/release.yml` builds tagged target VSIX artifacts, creates a GitHub Release, and publishes to marketplaces when `VSCE_PAT` and `OVSX_PAT` secrets are configured.

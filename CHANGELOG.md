@@ -2,8 +2,9 @@
 
 ## Unreleased
 
-- Upgraded the bundled Ark kernel to `0.1.252+14.6618e9a`, matching the
-  current Positron R extension baseline.
+- Added `npm run update:ark` to resolve, verify, install, and record the highest
+  available Ark release version.
+- Upgraded the bundled Ark kernel to `0.1.252+486.d0569cc`.
 - Added SHA-256 verification for downloaded Ark release assets.
 - Added Ark profiling, default repository, Package Manager repository, and
   custom kernel environment settings.
