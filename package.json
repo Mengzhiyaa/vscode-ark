@@ -30,34 +30,6 @@
   "activationEvents": [
     "onStartupFinished",
     "onDebugResolve:ark",
-    "onLanguage:r",
-    "onCommand:supervisor.startConsole",
-    "onCommand:supervisor.restartKernel",
-    "onCommand:supervisor.selectRPath",
-    "onCommand:supervisor.runCurrentStatement",
-    "onCommand:supervisor.insertAssignmentOperator",
-    "onCommand:supervisor.insertPipeOperator",
-    "onCommand:supervisor.help.showHelpAtCursor",
-    "onCommand:supervisor.help.lookupHelpTopic",
-    "onCommand:supervisor.help.showWelcome",
-    "onCommand:r.createNewFile",
-    "onCommand:r.insertSection",
-    "onCommand:r.packageLoad",
-    "onCommand:r.packageBuild",
-    "onCommand:r.packageInstall",
-    "onCommand:r.packageTest",
-    "onCommand:r.packageTestExplorer",
-    "onCommand:r.useTestthat",
-    "onCommand:r.useTest",
-    "onCommand:r.packageCheck",
-    "onCommand:r.packageDocument",
-    "onCommand:r.sourceCurrentFile",
-    "onCommand:r.sourceCurrentFileWithEcho",
-    "onCommand:r.rmarkdownRender",
-    "onCommand:r.loadRDataFile",
-    "onCommand:r.loadRdsFile",
-    "onCommand:r.loadRDataFileWithPicker",
-    "onCommand:r.showRVersion",
     "onLanguage:rdata",
     "onLanguage:rds",
     "onUri"
@@ -655,11 +627,7 @@
         "label": "R Debugger",
         "languages": [
           "r"
-        ],
-        "supportsUiLaunch": false,
-        "supportsFrameSelection": true,
-        "sendBreakpointsOnAllSaves": true,
-        "verifyBreakpointsInDirtyDocuments": true
+        ]
       }
     ]
   },

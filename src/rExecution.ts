@@ -52,6 +52,8 @@ export async function executeRCode(
         allowIncomplete?: boolean;
         mode?: RuntimeCodeExecutionMode;
         errorBehavior?: RuntimeErrorBehavior;
+        executionId?: string;
+        executionMetadata?: Record<string, unknown>;
         direct?: boolean;
     } = {},
 ): Promise<string | undefined> {
@@ -86,6 +88,12 @@ export async function executeRCode(
         code,
         attribution,
         options.focus ?? true,
+        options.allowIncomplete,
+        options.mode,
+        options.errorBehavior,
+        options.executionId,
+        options.fileUri,
+        options.executionMetadata,
     );
 }
 

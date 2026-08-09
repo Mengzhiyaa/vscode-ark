@@ -6,10 +6,12 @@ import * as vscode from 'vscode';
 import * as providerRetModule from '../../runtime/provider-ret';
 import * as rInstallationModule from '../../runtime/r-installation';
 import {
+    computeRootSignatureEntries,
     discoverRInstallations,
     getBestRInstallation,
+    isRRuntimeCacheable,
 } from '../../runtime/provider';
-import { RInstallation } from '../../runtime/r-installation';
+import { ReasonDiscovered, RInstallation } from '../../runtime/r-installation';
 
 function makeLogChannel(): vscode.LogOutputChannel {
     return {
@@ -138,6 +140,46 @@ suite('[Unit] provider discovery', () => {
         assert.strictEqual(installation, undefined);
         assert.deepStrictEqual(discovered, []);
 
+        fs.rmSync(tempDir, { recursive: true, force: true });
+    });
+
+    test('only caches system-scoped R installations', () => {
+        const system = new RInstallation({
+            binpath: '/opt/R/4.4.1/bin/R',
+            homepath: '/opt/R/4.4.1/lib/R',
+            version: '4.4.1',
+            reasonDiscovered: [ReasonDiscovered.HQ],
+        });
+        const pixi = new RInstallation({
+            binpath: '/tmp/project/.pixi/envs/default/bin/R',
+            homepath: '/tmp/project/.pixi/envs/default/lib/R',
+            version: '4.4.1',
+            reasonDiscovered: [ReasonDiscovered.PIXI],
+            packagerMetadata: {
+                kind: 'pixi',
+                environmentPath: '/tmp/project/.pixi/envs/default',
+            },
+        });
+
+        assert.strictEqual(isRRuntimeCacheable(system), true);
+        assert.strictEqual(isRRuntimeCacheable(pixi), false);
+    });
+
+    test('root signature entries retain absent roots and follow symlinks', () => {
+        const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ark-root-signature-'));
+        const target = path.join(tempDir, 'R-4.4');
+        const current = path.join(tempDir, 'current');
+        const absent = path.join(tempDir, 'future');
+        fs.mkdirSync(target);
+        fs.symlinkSync(target, current, 'dir');
+
+        const entries = computeRootSignatureEntries([current, target, absent]);
+
+        assert.strictEqual(entries.length, 2);
+        assert.strictEqual(entries[0].path, fs.realpathSync(target));
+        assert.strictEqual(entries[0].exists, true);
+        assert.strictEqual(entries[1].path, absent);
+        assert.strictEqual(entries[1].exists, false);
         fs.rmSync(tempDir, { recursive: true, force: true });
     });
 });

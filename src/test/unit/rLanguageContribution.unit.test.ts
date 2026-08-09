@@ -304,8 +304,8 @@ suite('[Unit] RLanguageContribution', () => {
         contribution.registerContributions(services);
 
         assert.strictEqual(registerSessionManagerCalls.length, 1);
-        assert.strictEqual(registerRuntimeManagerCalls.length, 1);
-        assert.deepStrictEqual(registerExternalDiscoveryManagerCalls, ['r']);
+        assert.strictEqual(registerRuntimeManagerCalls.length, 0);
+        assert.deepStrictEqual(registerExternalDiscoveryManagerCalls, []);
 
         const startConsole = registeredCommands.get(RCommandIds.startConsole);
         assert.ok(startConsole, 'Expected start console command to be registered');

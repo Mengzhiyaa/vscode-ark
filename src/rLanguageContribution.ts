@@ -32,11 +32,12 @@ import { R_LANGUAGE_ID } from './languageIds';
 import { createJupyterKernelSpec } from './runtime/kernel-spec';
 import { RLanguageLsp } from './runtime/lsp';
 import { RRuntimeManager } from './runtime-manager';
-import { RRuntimeStartupManager } from './runtime-startup-manager';
 import { RSessionManager } from './session-manager';
 import {
     formatRuntimeName,
     getBestRInstallation,
+    getRDiscoveryRootSignature,
+    isRRuntimeCacheable,
     promptForRPath,
     rRuntimeDiscoverer,
 } from './runtime/provider';
@@ -257,6 +258,7 @@ export class RLanguageLspFactory implements ILanguageLspFactory {
 }
 
 export class RLanguageRuntimeProvider implements ILanguageRuntimeProvider<RInstallation> {
+    readonly extensionId = 'mengzhiya.vscode-ark';
     readonly languageId = R_LANGUAGE_ID;
     readonly languageName = 'R';
     readonly lspFactory = new RLanguageLspFactory();
@@ -303,6 +305,7 @@ export class RLanguageRuntimeProvider implements ILanguageRuntimeProvider<RInsta
                 ? RUNTIME_STARTUP_BEHAVIOR.Immediate
                 : RUNTIME_STARTUP_BEHAVIOR.Implicit,
             sessionLocation: RUNTIME_SESSION_LOCATION.Workspace,
+            cacheable: isRRuntimeCacheable(installation),
             extraRuntimeData: getMetadataExtra(installation),
         };
     }
@@ -420,6 +423,10 @@ export class RLanguageRuntimeProvider implements ILanguageRuntimeProvider<RInsta
         return (await vscode.workspace.findFiles(glob, '**/node_modules/**', 1)).length > 0;
     }
 
+    getDiscoveryRootSignature() {
+        return getRDiscoveryRootSignature();
+    }
+
     getSessionIdPrefix(): string {
         return 'r';
     }
@@ -510,13 +517,6 @@ export class RLanguageContribution implements ILanguageExtensionContribution {
             this.runtimeProvider,
             services.logChannel,
         );
-        const runtimeStartupManager = new RRuntimeStartupManager(
-            this._extensionContext,
-            this.runtimeProvider,
-            services.runtimeManager,
-            services.runtimeStartupService,
-            services.logChannel,
-        );
         const runtimeSessionManager = new RSessionManager(
             this._extensionContext,
             services.runtimeSessionService,
@@ -532,15 +532,11 @@ export class RLanguageContribution implements ILanguageExtensionContribution {
             }
         });
         return [
-            services.runtimeManager.registerExternalDiscoveryManager?.(this.runtimeProvider.languageId) ??
-                new vscode.Disposable(() => undefined),
-            services.runtimeStartupService.registerRuntimeManager(runtimeStartupManager),
             services.runtimeSessionService.registerSessionManager(runtimeManager),
             services.positronPackagesService.registerPackageManagerProvider({
                 languageId: this.runtimeProvider.languageId,
                 createPackageManager: session => new RPackageManager(session, services),
             }),
-            runtimeStartupManager,
             runtimeSessionManager,
             ...registerHelpActions(
                 this.runtimeProvider.languageId,

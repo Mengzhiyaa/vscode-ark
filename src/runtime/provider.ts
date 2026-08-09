@@ -1,16 +1,171 @@
+import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as semver from 'semver';
 import * as vscode from 'vscode';
+import type { RuntimeRootEntry, RuntimeRootSignature } from '../types/supervisor-api';
 import { discoverRetInstallations, getBestRetInstallation, hasNativeRFinder } from './provider-ret';
 import {
     friendlyReason,
     formatRuntimeName,
     probeRInstallation,
     ReasonDiscovered,
+    isModuleMetadata,
+    isPixiMetadata,
     type PackagerMetadata,
     type RInstallation,
 } from './r-installation';
+
+const R_SERVER_ROOTS_POSIX: readonly string[] = [
+    '/usr/lib/R',
+    '/usr/lib64/R',
+    '/usr/local/lib/R',
+    '/usr/local/lib64/R',
+    '/opt/local/lib/R',
+    '/opt/local/lib64/R',
+    '/opt/local/R',
+];
+
+const R_AD_HOC_BINARIES: readonly string[] = [
+    '/usr/bin/R',
+    '/usr/local/bin/R',
+    '/opt/local/bin/R',
+    '/opt/homebrew/bin/R',
+];
+
+const NON_CACHEABLE_REASONS: ReadonlySet<ReasonDiscovered> = new Set([
+    ReasonDiscovered.PIXI,
+    ReasonDiscovered.MODULE,
+]);
+
+const SYSTEM_REASONS: ReadonlySet<ReasonDiscovered> = new Set(
+    Object.values(ReasonDiscovered).filter(reason => !NON_CACHEABLE_REASONS.has(reason)),
+);
+
+function rHeadquarters(): string[] {
+    switch (process.platform) {
+        case 'darwin':
+            return ['/Library/Frameworks/R.framework/Versions'];
+        case 'linux':
+            return ['/opt/R'];
+        case 'win32': {
+            const programFiles = new Set<string>();
+            const configuredProgramFiles = process.env.PROGRAMFILES ?? process.env.ProgramFiles;
+            if (configuredProgramFiles) {
+                programFiles.add(configuredProgramFiles);
+            }
+            if (process.env.ProgramW6432) {
+                programFiles.add(process.env.ProgramW6432);
+            }
+            if (programFiles.size === 0) {
+                programFiles.add('C:\\Program Files');
+            }
+            const roots = [...programFiles].flatMap(base => [
+                path.join(base, 'R'),
+                ...(process.arch === 'arm64' ? [path.join(base, 'R-aarch64')] : []),
+            ]);
+            if (process.env.LOCALAPPDATA) {
+                roots.push(path.join(process.env.LOCALAPPDATA, 'Programs', 'R'));
+                if (process.arch === 'arm64') {
+                    roots.push(path.join(process.env.LOCALAPPDATA, 'Programs', 'R-aarch64'));
+                }
+            }
+            return [...new Set(roots)];
+        }
+        default:
+            return [];
+    }
+}
+
+function rCurrentSymlinks(headquarters: readonly string[]): string[] {
+    if (process.platform === 'win32') {
+        return [];
+    }
+    const currentName = process.platform === 'darwin' ? 'Current' : 'current';
+    return headquarters.map(root => path.join(root, currentName));
+}
+
+export function computeRootSignatureEntries(candidates: readonly string[]): RuntimeRootEntry[] {
+    const seen = new Set<string>();
+    const entries: RuntimeRootEntry[] = [];
+    for (const candidate of candidates) {
+        let resolved = candidate;
+        let exists = false;
+        let mtimeMs = 0;
+        try {
+            const stat = fs.statSync(candidate);
+            try {
+                resolved = fs.realpathSync(candidate);
+            } catch {
+                resolved = candidate;
+            }
+            exists = true;
+            mtimeMs = stat.mtimeMs;
+        } catch {
+            // Keep absent roots in the signature so creating one invalidates it.
+        }
+        if (!seen.has(resolved)) {
+            seen.add(resolved);
+            entries.push({ path: resolved, exists, mtimeMs });
+        }
+    }
+    return entries;
+}
+
+export async function getRDiscoveryRootSignature(): Promise<RuntimeRootSignature> {
+    const headquarters = rHeadquarters();
+    const config = vscode.workspace.getConfiguration('ark');
+    const configuredRPath = config.get<string>('r.path') || undefined;
+    const candidates = [
+        ...headquarters,
+        ...rCurrentSymlinks(headquarters),
+        ...(process.platform === 'win32' ? [] : R_SERVER_ROOTS_POSIX),
+        ...R_AD_HOC_BINARIES,
+        ...(configuredRPath ? [configuredRPath] : []),
+    ];
+    return {
+        entries: computeRootSignatureEntries(candidates),
+        opaque: getRFilterSettingsDigest(),
+    };
+}
+
+function getRFilterSettingsDigest(): string {
+    const config = vscode.workspace.getConfiguration('ark');
+    const payload = {
+        rPath: config.get<string>('r.path') ?? '',
+    };
+    return crypto.createHash('sha256').update(JSON.stringify(payload)).digest('hex');
+}
+
+export function isRRuntimeCacheable(installation: RInstallation): boolean {
+    if (!installation.binpath || !installation.reasonDiscovered?.length) {
+        return false;
+    }
+    if (
+        installation.packagerMetadata &&
+        (isModuleMetadata(installation.packagerMetadata) || isPixiMetadata(installation.packagerMetadata))
+    ) {
+        return false;
+    }
+    if (installation.reasonDiscovered.some(reason => NON_CACHEABLE_REASONS.has(reason))) {
+        return false;
+    }
+    if (!installation.reasonDiscovered.some(reason => SYSTEM_REASONS.has(reason))) {
+        return false;
+    }
+
+    const runtimePath = normalizePathForComparison(installation.binpath);
+    return !(vscode.workspace.workspaceFolders ?? []).some(folder => {
+        const workspacePath = normalizePathForComparison(folder.uri.fsPath);
+        const relative = path.relative(workspacePath, runtimePath);
+        return relative === '' || (!relative.startsWith('..') && !path.isAbsolute(relative));
+    });
+}
+
+function normalizePathForComparison(value: string): string {
+    const normalized = path.resolve(value);
+    return process.platform === 'win32' ? normalized.toLowerCase() : normalized;
+}
 
 export interface RBinary {
     path: string;
