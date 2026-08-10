@@ -24,9 +24,8 @@ const SHOULD_TAB_COMPLETE_CONTEXT_KEY = 'supervisor.shouldTabComplete';
  * - No async command wrapper in the hot path
  * - Selection/indentation behavior is preserved natively by VS Code
  *
- * @param context Extension context for disposable management
  */
-export function registerTabCompletion(context: vscode.ExtensionContext): void {
+export function registerTabCompletion(): vscode.Disposable {
     // Update context on cursor movement / selection change
     const onSelectionChange = vscode.window.onDidChangeTextEditorSelection(e => {
         updateTabCompletionContext(e.textEditor);
@@ -40,7 +39,10 @@ export function registerTabCompletion(context: vscode.ExtensionContext): void {
     // Initialize context for the current active editor
     updateTabCompletionContext(vscode.window.activeTextEditor);
 
-    context.subscriptions.push(onSelectionChange, onEditorChange);
+    return new vscode.Disposable(() => {
+        onSelectionChange.dispose();
+        onEditorChange.dispose();
+    });
 }
 
 /**

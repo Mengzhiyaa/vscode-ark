@@ -19,6 +19,18 @@ interface PackageJsonShape {
         binaryDependencies?: Record<string, string | undefined>;
         binaryChecksums?: Record<string, Record<string, string | undefined> | undefined>;
     };
+    supervisor?: {
+        languageAssetsVersion?: number;
+        languages?: Array<{
+            languageId?: string;
+            displayName?: string;
+            assets?: {
+                localResourceRoots?: string[];
+                monacoSupportModule?: string;
+                textMateGrammar?: { scopeName?: string; path?: string };
+            };
+        }>;
+    };
     contributes?: {
         languages?: Array<{ id?: string }>;
         grammars?: Array<{ language?: string }>;
@@ -78,6 +90,21 @@ suite('[Unit] R package manifest', () => {
         assert.strictEqual(packageJson.scripts?.['build'], 'npm run build:webview && npm run compile');
         assert.strictEqual(packageJson.scripts?.['sync:supervisor-api'], 'node scripts/sync-supervisor-api.mjs');
         assert.strictEqual(packageJson.scripts?.['verify:supervisor-api'], 'node scripts/sync-supervisor-api.mjs --check');
+        assert.deepStrictEqual(packageJson.supervisor, {
+            languageAssetsVersion: 1,
+            languages: [{
+                languageId: 'r',
+                displayName: 'R',
+                assets: {
+                    localResourceRoots: ['./webview/dist', './syntaxes'],
+                    monacoSupportModule: './webview/dist/rMonacoSupport/index.js',
+                    textMateGrammar: {
+                        scopeName: 'source.r',
+                        path: './syntaxes/r.tmGrammar.gen.json',
+                    },
+                },
+            }],
+        });
         assert.strictEqual(
             packageJson.scripts?.['test:unit:ext'],
             'npm run test:prepare && node scripts/run-vscode-tests.mjs --label unit'

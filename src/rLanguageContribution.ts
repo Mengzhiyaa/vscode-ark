@@ -5,11 +5,11 @@ import * as vscode from 'vscode';
 import type {
     BinaryDefinition,
     IBinaryProvider,
-    ILanguageExtensionContribution,
     ILanguageContributionServices,
     ILanguageInstallationPickerOptions,
     ILanguageLsp,
     ILanguageLspFactory,
+    ILanguageOptionalCapabilityDescriptor,
     ILanguageRuntimeProvider,
     LanguageRuntimeDynState,
     LanguageRuntimeMetadata,
@@ -495,9 +495,10 @@ function toArkReportedVersion(releaseVersion: string): string {
     return `${match[1]}+${match[2]}.${match[3]}`;
 }
 
-export class RLanguageContribution implements ILanguageExtensionContribution {
+export class RLanguageContribution {
     readonly runtimeProvider: RLanguageRuntimeProvider;
     readonly binaryProvider: RBinaryProvider;
+    private _runtimeSessionManager: RRuntimeManager | undefined;
 
     constructor(
         private readonly _extensionContext: vscode.ExtensionContext,
@@ -507,46 +508,93 @@ export class RLanguageContribution implements ILanguageExtensionContribution {
         this.binaryProvider = new RBinaryProvider(_extensionContext);
     }
 
-    registerContributions(
-        services: ILanguageContributionServices,
-    ): vscode.Disposable[] {
-        registerTabCompletion(this._extensionContext);
-        const runtimeManager = new RRuntimeManager(
+    getRuntimeSessionManager(logChannel: vscode.LogOutputChannel): RRuntimeManager {
+        this._runtimeSessionManager ??= new RRuntimeManager(
             this._extensionContext,
             this._api,
             this.runtimeProvider,
-            services.logChannel,
+            logChannel,
         );
-        const runtimeSessionManager = new RSessionManager(
+        return this._runtimeSessionManager;
+    }
+
+    getOptionalCapabilities(): readonly ILanguageOptionalCapabilityDescriptor[] {
+        const services = (value: unknown) => value as ILanguageContributionServices;
+        return [
+            {
+                id: 'r.sessionActions',
+                revision: 1,
+                kind: 'commands',
+                activate: ({ services: value }) => this.registerSessionActions(services(value)),
+            },
+            {
+                id: 'r.contexts',
+                revision: 1,
+                kind: 'commands',
+                activate: () => setRContexts(),
+            },
+            {
+                id: 'r.testExplorer',
+                revision: 1,
+                kind: 'testExplorer',
+                dependencies: ['r.contexts'],
+                activate: async ({ services: value }) => {
+                    const disposable = await setupRTestExplorer(this._extensionContext, services(value));
+                    return disposable ? [disposable] : [];
+                },
+            },
+            {
+                id: 'r.packages',
+                revision: 1,
+                kind: 'packageManager',
+                activate: ({ services: value }) => this.registerPackageManager(services(value)),
+            },
+            {
+                id: 'r.help',
+                revision: 1,
+                kind: 'help',
+                activate: ({ services: value }) => registerHelpActions(
+                    this.runtimeProvider.languageId,
+                    this.runtimeProvider.languageName,
+                    services(value),
+                ),
+            },
+            {
+                id: 'r.commands',
+                revision: 1,
+                kind: 'commands',
+                activate: ({ services: value }) => this.registerCommands(services(value)),
+            },
+            {
+                id: 'r.dataEditors',
+                revision: 1,
+                kind: 'dataExplorer',
+                activate: ({ services: value }) => this.registerDataEditors(services(value)),
+            },
+        ];
+    }
+
+    private registerSessionActions(services: ILanguageContributionServices): vscode.Disposable {
+        return new RSessionManager(
             this._extensionContext,
             services.runtimeSessionService,
             services.positronConsoleService,
             services.logChannel,
         );
-        void setRContexts(this._extensionContext).then(disposable => {
-            this._extensionContext.subscriptions.push(disposable);
+    }
+
+    private registerPackageManager(services: ILanguageContributionServices): vscode.Disposable {
+        return services.positronPackagesService.registerPackageManagerProvider({
+            languageId: this.runtimeProvider.languageId,
+            createPackageManager: session => new RPackageManager(session, services),
         });
-        void setupRTestExplorer(this._extensionContext, services).then(disposable => {
-            if (disposable) {
-                this._extensionContext.subscriptions.push(disposable);
-            }
-        });
+    }
+
+    private registerCommands(services: ILanguageContributionServices): vscode.Disposable[] {
         return [
-            services.runtimeSessionService.registerSessionManager(runtimeManager),
-            services.positronPackagesService.registerPackageManagerProvider({
-                languageId: this.runtimeProvider.languageId,
-                createPackageManager: session => new RPackageManager(session, services),
-            }),
-            runtimeSessionManager,
-            ...registerHelpActions(
-                this.runtimeProvider.languageId,
-                this.runtimeProvider.languageName,
-                services
-            ),
+            registerTabCompletion(),
             ...registerRCommands(this._extensionContext, services),
             registerUriHandler(services),
-            RDataEditorProvider.register(services),
-            RdsEditorProvider.register(services),
             vscode.commands.registerCommand('positron.reticulate.isAutoEnabled', () => {
                 return false;
             }),
@@ -661,6 +709,13 @@ export class RLanguageContribution implements ILanguageExtensionContribution {
                     }
                 });
             }),
+        ];
+    }
+
+    private registerDataEditors(services: ILanguageContributionServices): vscode.Disposable[] {
+        return [
+            RDataEditorProvider.register(services),
+            RdsEditorProvider.register(services),
         ];
     }
 }

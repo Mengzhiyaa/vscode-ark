@@ -73,6 +73,26 @@
       }
     }
   },
+  "supervisor": {
+    "languageAssetsVersion": 1,
+    "languages": [
+      {
+        "languageId": "r",
+        "displayName": "R",
+        "assets": {
+          "localResourceRoots": [
+            "./webview/dist",
+            "./syntaxes"
+          ],
+          "monacoSupportModule": "./webview/dist/rMonacoSupport/index.js",
+          "textMateGrammar": {
+            "scopeName": "source.r",
+            "path": "./syntaxes/r.tmGrammar.gen.json"
+          }
+        }
+      }
+    ]
+  },
   "contributes": {
     "languages": [
       {

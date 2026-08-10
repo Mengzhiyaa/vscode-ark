@@ -141,6 +141,24 @@ suite('[Unit] kernel-spec', () => {
         }
     });
 
+    test('quotes a conda environment path containing shell metacharacters', async () => {
+        const installation = new RInstallation({
+            binpath: '/opt/conda/envs/r prod/bin/R',
+            homepath: '/opt/conda/envs/r prod/lib/R',
+            version: '4.4.1',
+            packagerMetadata: {
+                kind: 'conda',
+                environmentPath: "/opt/conda/envs/r prod's",
+            },
+        });
+
+        const spec = await createJupyterKernelSpec(makeContext(), installation, 'console', makeLogChannel());
+
+        if (process.platform !== 'win32') {
+            assert.strictEqual(spec.startup_command, `conda activate '/opt/conda/envs/r prod'"'"'s'`);
+        }
+    });
+
     test('falls back to PATH-based pixi activation when RET launch metadata is absent', async () => {
         const installation = new RInstallation({
             binpath: '/workspace/.pixi/envs/default/bin/R',
@@ -266,6 +284,43 @@ suite('[Unit] kernel-spec', () => {
         assert.deepStrictEqual(
             spec.argv.slice(spec.argv.indexOf('--default-repos'), spec.argv.indexOf('--default-repos') + 2),
             ['--default-repos', 'posit-ppm'],
+        );
+    });
+
+    test('prefers an r-versions repository URL over configured repositories', async () => {
+        const installation = new RInstallation({
+            binpath: '/usr/bin/R',
+            homepath: '/usr/lib/R',
+            version: '4.5.0',
+            rversionsOverlay: {
+                repo: 'https://ppm.example.test/cran/latest',
+            },
+        });
+
+        const spec = await createJupyterKernelSpec(makeContext(), installation, 'console', makeLogChannel());
+
+        assert.deepStrictEqual(
+            spec.argv.slice(spec.argv.indexOf('--default-cran-repo'), spec.argv.indexOf('--default-cran-repo') + 2),
+            ['--default-cran-repo', 'https://ppm.example.test/cran/latest'],
+        );
+        assert.ok(!spec.argv.includes('--default-repos'));
+        assert.ok(!spec.argv.includes('--default-ppm-repo'));
+    });
+
+    test('uses an r-versions repository configuration file', async () => {
+        const repo = path.join(makeContext().extensionPath, 'package.json');
+        const installation = new RInstallation({
+            binpath: '/usr/bin/R',
+            homepath: '/usr/lib/R',
+            version: '4.5.0',
+            rversionsOverlay: { repo },
+        });
+
+        const spec = await createJupyterKernelSpec(makeContext(), installation, 'console', makeLogChannel());
+
+        assert.deepStrictEqual(
+            spec.argv.slice(spec.argv.indexOf('--repos-conf'), spec.argv.indexOf('--repos-conf') + 2),
+            ['--repos-conf', repo],
         );
     });
 });

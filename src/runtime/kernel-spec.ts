@@ -10,11 +10,20 @@ import {
     isCondaMetadata,
     isPixiMetadata,
     type RInstallation,
+    type RVersionsOverlay,
 } from './r-installation';
 
 function prependPathEntry(env: Record<string, string>, entries: string[]): void {
     const currentPath = env.PATH ?? process.env.PATH ?? '';
     env.PATH = [...entries, currentPath].filter(Boolean).join(path.delimiter);
+}
+
+function quoteShellArgument(argument: string): string {
+    if (/^[A-Za-z0-9_@%+=:,./-]+$/.test(argument)) {
+        return argument;
+    }
+
+    return `'${argument.replace(/'/g, `'"'"'`)}'`;
 }
 
 function getCliHyperlinkEnvironment(): Record<string, string> {
@@ -266,7 +275,7 @@ export async function createJupyterKernelSpec(
                 log,
             );
         } else {
-            startup_command = `conda activate ${environmentPath}`;
+            startup_command = `conda activate ${quoteShellArgument(environmentPath)}`;
             log.info(`Using conda activation: ${startup_command}`);
         }
     } else if (
@@ -296,9 +305,14 @@ export async function createJupyterKernelSpec(
         argv.push('--standard-dll-search-order');
     }
 
+    const rVersionsRepoArgs = getRVersionsRepoArgs(rInstallation.rversionsOverlay, log);
+    if (rVersionsRepoArgs) {
+        argv.push(...rVersionsRepoArgs);
+    }
+
     const defaultRepositories = config.get<string>('defaultRepositories') ?? 'auto';
     const packageManagerRepository = config.get<string>('packageManagerRepository')?.replace(/\/+$/, '');
-    if (defaultRepositories === 'auto') {
+    if (!rVersionsRepoArgs && defaultRepositories === 'auto') {
         const reposConf = findReposConf();
         if (reposConf) {
             argv.push('--repos-conf', reposConf);
@@ -307,7 +321,7 @@ export async function createJupyterKernelSpec(
         } else if (vscode.env.uiKind === vscode.UIKind.Web) {
             argv.push('--default-repos', 'posit-ppm');
         }
-    } else {
+    } else if (!rVersionsRepoArgs) {
         if (packageManagerRepository) {
             log.warn('ark.packageManagerRepository is ignored unless ark.defaultRepositories is set to auto');
         }
@@ -344,4 +358,36 @@ export async function createJupyterKernelSpec(
 
     log.debug(`Kernel spec created: ${JSON.stringify(kernelSpec, null, 2)}`);
     return kernelSpec;
+}
+
+/**
+ * Get repository configuration args from r-versions metadata.
+ *
+ * The Repo field can be either a file path to a repos.conf file or a URL.
+ * For URLs, use ark's --default-cran-repo.
+ * For file paths, use ark's --repos-conf.
+ * Returns the appropriate argv entries, or `undefined` if no repo is specified.
+ */
+function getRVersionsRepoArgs(
+    packagerMetadata: RVersionsOverlay | undefined,
+    log: vscode.LogOutputChannel,
+): string[] | undefined {
+    if (!packagerMetadata?.repo) {
+        return undefined;
+    }
+
+    const repo = packagerMetadata.repo;
+
+    if (repo.startsWith('http://') || repo.startsWith('https://')) {
+        log.info(`Using r-versions repo URL: ${repo}`);
+        return ['--default-cran-repo', repo];
+    }
+
+    if (fs.existsSync(repo) && fs.statSync(repo).isFile()) {
+        log.info(`Using r-versions repos.conf: ${repo}`);
+        return ['--repos-conf', repo];
+    }
+
+    log.warn(`r-versions Repo field is not a valid URL or file path: ${repo}`);
+    return undefined;
 }

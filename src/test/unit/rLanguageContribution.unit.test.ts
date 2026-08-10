@@ -7,6 +7,7 @@ import * as vscode from 'vscode';
 import type {
     IRuntimeSessionService,
     IRuntimeStartupService,
+    ILanguageContributionServices,
     ISupervisorFrameworkApi,
     LanguageRuntimeMetadata,
     RuntimeStartupPhase,
@@ -132,6 +133,28 @@ function makeInstallation(binpath: string): RInstallation {
     });
 }
 
+async function activateCapabilities(
+    contribution: RLanguageContribution,
+    services: ILanguageContributionServices,
+    ...capabilityIds: string[]
+): Promise<void> {
+    const descriptors = contribution.getOptionalCapabilities();
+    for (const capabilityId of capabilityIds) {
+        const descriptor = descriptors.find(candidate => candidate.id === capabilityId);
+        assert.ok(descriptor, `Expected optional capability '${capabilityId}'`);
+        await descriptor.activate({
+            identity: {
+                ownerExtensionId: 'mengzhiya.vscode-ark',
+                languageId: 'r',
+                registrationId: 'core',
+                revision: 1,
+            },
+            generation: 1,
+            services,
+        }, new AbortController().signal);
+    }
+}
+
 suite('[Unit] RLanguageContribution', () => {
     const originalRegisterCommand = vscode.commands.registerCommand.bind(vscode.commands);
     const originalExecuteCommand = vscode.commands.executeCommand.bind(vscode.commands);
@@ -218,7 +241,7 @@ suite('[Unit] RLanguageContribution', () => {
         );
     });
 
-    test('registers RRuntimeManager and reveals console without stealing focus for preferred runtimes', async () => {
+    test('uses a stable RRuntimeManager and reveals console without stealing focus for preferred runtimes', async () => {
         const registeredCommands = new Map<string, RegisteredCommandHandler>();
         const registerSessionManagerCalls: unknown[] = [];
         const registerRuntimeManagerCalls: unknown[] = [];
@@ -301,9 +324,13 @@ suite('[Unit] RLanguageContribution', () => {
         };
 
         const contribution = new RLanguageContribution(makeContext(), api as ISupervisorFrameworkApi);
-        contribution.registerContributions(services);
+        await activateCapabilities(contribution, services, 'r.commands');
 
-        assert.strictEqual(registerSessionManagerCalls.length, 1);
+        assert.strictEqual(
+            contribution.getRuntimeSessionManager(services.logChannel),
+            contribution.getRuntimeSessionManager(services.logChannel),
+        );
+        assert.strictEqual(registerSessionManagerCalls.length, 0);
         assert.strictEqual(registerRuntimeManagerCalls.length, 0);
         assert.deepStrictEqual(registerExternalDiscoveryManagerCalls, []);
 
@@ -376,7 +403,7 @@ suite('[Unit] RLanguageContribution', () => {
         };
 
         const contribution = new RLanguageContribution(makeContext(), api as ISupervisorFrameworkApi);
-        contribution.registerContributions(services);
+        await activateCapabilities(contribution, services, 'r.commands');
 
         const startConsole = registeredCommands.get(RCommandIds.startConsole);
         assert.ok(startConsole, 'Expected start console command to be registered');
@@ -460,7 +487,7 @@ suite('[Unit] RLanguageContribution', () => {
         };
 
         const contribution = new RLanguageContribution(makeContext(), api as ISupervisorFrameworkApi);
-        contribution.registerContributions(services);
+        await activateCapabilities(contribution, services, 'r.commands');
 
         const startConsole = registeredCommands.get(RCommandIds.startConsole);
         assert.ok(startConsole, 'Expected start console command to be registered');
@@ -586,7 +613,7 @@ suite('[Unit] RLanguageContribution', () => {
         };
 
         const contribution = new RLanguageContribution(makeContext(), {} as ISupervisorFrameworkApi);
-        contribution.registerContributions(services);
+        await activateCapabilities(contribution, services, 'r.commands');
 
         const runCurrentStatement = registeredCommands.get(RCommandIds.runCurrentStatement);
         assert.ok(runCurrentStatement, 'Expected run current statement command to be registered');
@@ -696,7 +723,7 @@ suite('[Unit] RLanguageContribution', () => {
         };
 
         const contribution = new RLanguageContribution(makeContext(), {} as ISupervisorFrameworkApi);
-        contribution.registerContributions(services);
+        await activateCapabilities(contribution, services, 'r.help');
 
         const helpShowHelpAtCursor = registeredCommands.get(RCommandIds.helpShowHelpAtCursor);
         assert.ok(helpShowHelpAtCursor, 'Expected help at cursor command to be registered');

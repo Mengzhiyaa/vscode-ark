@@ -3,7 +3,7 @@ import PQueue from 'p-queue';
 import type {
     IPositronConsoleService,
     ILanguageRuntimeSession,
-    IRuntimeSessionService,
+    ILanguageContributionServices,
     LanguageRuntimeClientType,
     RuntimeState,
 } from './types/supervisor-api';
@@ -29,7 +29,7 @@ export class RSessionManager implements vscode.Disposable {
 
     constructor(
         private readonly _context: vscode.ExtensionContext,
-        private readonly _runtimeSessionService: IRuntimeSessionService,
+        private readonly _runtimeSessionService: ILanguageContributionServices['runtimeSessionService'],
         private readonly _positronConsoleService: IPositronConsoleService,
         private readonly _logChannel: vscode.LogOutputChannel,
     ) {

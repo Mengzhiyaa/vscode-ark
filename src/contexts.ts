@@ -45,7 +45,7 @@ export async function refreshRTestthatContexts(isRPackage = false): Promise<void
     }
 }
 
-export async function setRContexts(context: vscode.ExtensionContext): Promise<vscode.Disposable> {
+export async function setRContexts(): Promise<vscode.Disposable> {
     await refreshRContexts();
 
     const disposables: vscode.Disposable[] = [];
@@ -64,7 +64,6 @@ export async function setRContexts(context: vscode.ExtensionContext): Promise<vs
             item.dispose();
         }
     });
-    context.subscriptions.push(disposable);
     return disposable;
 }
 

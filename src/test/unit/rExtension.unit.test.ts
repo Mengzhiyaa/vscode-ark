@@ -9,6 +9,12 @@ function makeContext(): vscode.ExtensionContext {
     return {
         extensionPath,
         extensionUri: vscode.Uri.file(extensionPath),
+        extension: {
+            id: 'mengzhiya.vscode-ark',
+            packageJSON: {
+                positron: { binaryDependencies: { ark: 'ark-0.1.0-1-deadbeef' } },
+            },
+        },
         subscriptions: [],
         globalState: {} as vscode.Memento,
         workspaceState: {} as vscode.Memento,
@@ -43,75 +49,118 @@ suite('[Unit] Split R extension entry', () => {
         );
     });
 
-    test('registers R language support through the supervisor API', async () => {
-        const registrations: unknown[] = [];
-        (vscode.debug as {
-            registerDebugAdapterDescriptorFactory: typeof vscode.debug.registerDebugAdapterDescriptorFactory
-        }).registerDebugAdapterDescriptorFactory = (() => {
-            return new vscode.Disposable(() => { });
-        }) as typeof vscode.debug.registerDebugAdapterDescriptorFactory;
-        const api: Partial<ISupervisorFrameworkApi> = {
-            registerLanguageSupport: async (registration) => {
-                registrations.push(registration);
+    test('reports an incompatible supervisor API before registering local resources', async () => {
+        const supervisorExtension = { activate: async () => ({}) };
+        (vscode.extensions as { getExtension: typeof vscode.extensions.getExtension }).getExtension = ((id: string) =>
+            id === 'mengzhiya.vscode-supervisor'
+                ? supervisorExtension as unknown as vscode.Extension<unknown>
+                : undefined
+        ) as typeof vscode.extensions.getExtension;
+
+        await assert.rejects(
+            () => rExtension.activate(makeContext()),
+            /does not expose the required Supervisor Language API/,
+        );
+    });
+
+    test('commits independent R capabilities through the language registry', async () => {
+        const calls: Array<{ method: string; value?: unknown }> = [];
+        const handle = new vscode.Disposable(() => { });
+        const builder = {
+            setRuntimeProvider(value: unknown) {
+                calls.push({ method: 'setRuntimeProvider', value });
+                return this;
+            },
+            setSessionManager(value: unknown) {
+                calls.push({ method: 'setSessionManager', value });
+                return this;
+            },
+            setLspFactory(value: unknown) {
+                calls.push({ method: 'setLspFactory', value });
+                return this;
+            },
+            setBinaryProvider(value: unknown) {
+                calls.push({ method: 'setBinaryProvider', value });
+                return this;
+            },
+            addOptionalCapability(value: unknown) {
+                calls.push({ method: 'addOptionalCapability', value });
+                return this;
+            },
+            commit() {
+                calls.push({ method: 'commit' });
+                return handle;
             },
         };
+        const api = {
+            apiVersion: 2,
+            protocolVersion: { major: 2, minor: 0 },
+            capabilities: ['languageCapabilityRegistry'],
+            services: { logChannel: vscode.window.createOutputChannel('Ark R Registry Test', { log: true }) },
+            languages: {
+                forExtension: (ownerExtensionId: string) => {
+                    calls.push({ method: 'forExtension', value: ownerExtensionId });
+                    return {
+                        ownerExtensionId,
+                        begin: (identity: unknown) => {
+                            calls.push({ method: 'begin', value: identity });
+                            return builder;
+                        },
+                    };
+                },
+            },
+        } as unknown as ISupervisorFrameworkApi;
+        const supervisorExtension = { activate: async () => api };
 
-        const supervisorExtension = {
-            activate: async () => api,
-        };
-
-        (vscode.extensions as { getExtension: typeof vscode.extensions.getExtension }).getExtension = ((id: string) => {
-            return id === 'mengzhiya.vscode-supervisor'
+        (vscode.debug as {
+            registerDebugAdapterDescriptorFactory: typeof vscode.debug.registerDebugAdapterDescriptorFactory
+        }).registerDebugAdapterDescriptorFactory = (() => new vscode.Disposable(() => { })) as
+            typeof vscode.debug.registerDebugAdapterDescriptorFactory;
+        (vscode.extensions as { getExtension: typeof vscode.extensions.getExtension }).getExtension = ((id: string) =>
+            id === 'mengzhiya.vscode-supervisor'
                 ? supervisorExtension as unknown as vscode.Extension<unknown>
-                : undefined;
-        }) as typeof vscode.extensions.getExtension;
+                : undefined
+        ) as typeof vscode.extensions.getExtension;
 
         const context = makeContext();
         activeContexts.push(context);
-
+        context.subscriptions.push(api.services.logChannel);
         await rExtension.activate(context);
 
-        assert.strictEqual(registrations.length, 1, 'Expected one language registration');
-        const registration = registrations[0] as {
-            runtimeProvider?: { languageId?: string };
-            binaryProvider?: { getBinaryDefinitions?: () => unknown };
-            languageContribution?: unknown;
-            webviewAssets?: {
-                localResourceRoots?: readonly vscode.Uri[];
-                monacoSupportModule?: vscode.Uri;
-                textMateGrammar?: {
-                    scopeName?: string;
-                    grammarUri?: vscode.Uri;
-                };
-            };
-        };
-
-        assert.strictEqual(registration.runtimeProvider?.languageId, 'r');
+        assert.strictEqual(calls[0].method, 'forExtension');
+        assert.strictEqual(calls[0].value, 'mengzhiya.vscode-ark');
+        assert.deepStrictEqual(calls.find((call) => call.method === 'begin')?.value, {
+            languageId: 'r',
+            registrationId: 'core',
+            revision: 1,
+        });
         assert.strictEqual(
-            typeof registration.binaryProvider?.getBinaryDefinitions,
+            (calls.find((call) => call.method === 'setRuntimeProvider')?.value as { languageId?: string }).languageId,
+            'r',
+        );
+        assert.strictEqual(
+            (calls.find((call) => call.method === 'setLspFactory')?.value as { languageId?: string }).languageId,
+            'r',
+        );
+        assert.strictEqual(
+            typeof (calls.find((call) => call.method === 'setBinaryProvider')?.value as {
+                getBinaryDefinitions?: unknown;
+            }).getBinaryDefinitions,
             'function',
         );
-        assert.ok(registration.languageContribution, 'Expected an R language contribution instance');
-        assert.ok(
-            registration.webviewAssets?.monacoSupportModule?.path.endsWith(
-                '/webview/dist/rMonacoSupport/index.js'
-            )
-        );
         assert.strictEqual(
-            registration.webviewAssets?.textMateGrammar?.scopeName,
-            'source.r'
-        );
-        assert.ok(
-            registration.webviewAssets?.textMateGrammar?.grammarUri?.path.endsWith(
-                '/syntaxes/r.tmGrammar.gen.json'
-            )
+            typeof (calls.find((call) => call.method === 'setSessionManager')?.value as {
+                managesRuntime?: unknown;
+            }).managesRuntime,
+            'function',
         );
         assert.deepStrictEqual(
-            registration.webviewAssets?.localResourceRoots?.map((uri) =>
-                uri.path.endsWith('/webview/dist') ||
-                uri.path.endsWith('/syntaxes')
-            ),
-            [true, true]
+            calls
+                .filter((call) => call.method === 'addOptionalCapability')
+                .map((call) => (call.value as { id: string }).id),
+            ['r.sessionActions', 'r.contexts', 'r.testExplorer', 'r.packages', 'r.help', 'r.commands', 'r.dataEditors'],
         );
+        assert.strictEqual(calls.filter((call) => call.method === 'commit').length, 1);
+        assert.ok(context.subscriptions.includes(handle));
     });
 });
