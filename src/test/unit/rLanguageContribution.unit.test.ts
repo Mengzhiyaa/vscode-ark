@@ -517,6 +517,31 @@ suite('[Unit] RLanguageContribution', () => {
         assert.strictEqual(metadata.runtimeId, expectedRuntimeId);
     });
 
+    test('uses a home-relative runtime display path when possible', () => {
+        const contribution = new RLanguageContribution(makeContext(), {} as ISupervisorFrameworkApi);
+        const homeRuntimePath = path.join(os.homedir(), 'R', '4.4.1', 'bin', 'R');
+        const systemRuntimePath = path.resolve(path.parse(os.homedir()).root, 'opt', 'R', 'bin', 'R');
+
+        const homeMetadata = contribution.runtimeProvider.createRuntimeMetadata(
+            makeContext(),
+            makeInstallation(homeRuntimePath),
+            makeLogChannel(),
+        );
+        const systemMetadata = contribution.runtimeProvider.createRuntimeMetadata(
+            makeContext(),
+            makeInstallation(systemRuntimePath),
+            makeLogChannel(),
+        );
+
+        assert.strictEqual(
+            homeMetadata.runtimeDisplayPath,
+            process.platform === 'win32'
+                ? homeRuntimePath
+                : path.join('~', 'R', '4.4.1', 'bin', 'R'),
+        );
+        assert.strictEqual(systemMetadata.runtimeDisplayPath, systemRuntimePath);
+    });
+
     test('validateMetadata rejects installations that are below the minimum supported version', async () => {
         const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ark-metadata-unit-'));
         const binDir = path.join(tempDir, 'bin');

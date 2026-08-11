@@ -1,5 +1,6 @@
 import * as crypto from 'crypto';
 import * as fs from 'fs';
+import * as os from 'os';
 import * as path from 'path';
 import * as vscode from 'vscode';
 import type {
@@ -82,6 +83,21 @@ function createRuntimeId(binpath: string, version: string): string {
     digest.update(binpath);
     digest.update(version);
     return digest.digest('hex').substring(0, 32);
+}
+
+function getRuntimeDisplayPath(runtimePath: string): string {
+    if (process.platform === 'win32') {
+        return runtimePath;
+    }
+
+    const relativePath = path.relative(os.homedir(), runtimePath);
+    if (relativePath === '') {
+        return '~';
+    }
+
+    return relativePath === '..' || relativePath.startsWith(`..${path.sep}`) || path.isAbsolute(relativePath)
+        ? runtimePath
+        : path.join('~', relativePath);
 }
 
 function createValidationLogChannel(): vscode.LogOutputChannel {
@@ -295,6 +311,7 @@ export class RLanguageRuntimeProvider implements ILanguageRuntimeProvider<RInsta
             runtimeName: this.formatRuntimeName(installation),
             runtimeShortName: installation.version,
             runtimePath: installation.binpath,
+            runtimeDisplayPath: getRuntimeDisplayPath(installation.binpath),
             runtimeVersion: '0.0.1',
             runtimeSource: installation.source,
             languageId: this.languageId,
