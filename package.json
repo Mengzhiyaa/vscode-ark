@@ -557,7 +557,7 @@
         },
         "ark.kernel.logLevel": {
           "type": "string",
-          "default": "info",
+          "default": "warn",
           "enum": [
             "trace",
             "debug",
@@ -569,7 +569,7 @@
         },
         "ark.kernel.logLevelExternal": {
           "type": "string",
-          "default": "info",
+          "default": "warn",
           "enum": [
             "trace",
             "debug",

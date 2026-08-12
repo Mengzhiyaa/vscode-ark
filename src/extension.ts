@@ -4,6 +4,8 @@ import type {
 } from './types/supervisor-api';
 import { registerArkDebugAdapterFactory } from './debugger';
 import { RLanguageContribution } from './rLanguageContribution';
+import { disposeLspOutputChannel } from './runtime/lsp';
+import { RedactingLogOutputChannel } from './logging';
 
 const SUPERVISOR_EXTENSION_ID = 'mengzhiya.vscode-supervisor';
 
@@ -27,11 +29,18 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
     const api = await supervisorExtension.activate();
     ensureCompatibleSupervisorApi(api);
-    const logChannel = vscode.window.createOutputChannel('Ark R', { log: true });
+    const logChannel = new RedactingLogOutputChannel(
+        vscode.window.createOutputChannel('R Language Pack', { log: true }),
+    );
     context.subscriptions.push(logChannel);
+    context.subscriptions.push(new vscode.Disposable(disposeLspOutputChannel));
+    logChannel.info(`Log level: ${vscode.LogLevel[logChannel.logLevel]}`);
+    context.subscriptions.push(logChannel.onDidChangeLogLevel((level) => {
+        logChannel.info(`Log level changed to: ${vscode.LogLevel[level]}`);
+    }));
     context.subscriptions.push(registerArkDebugAdapterFactory());
 
-    const contribution = new RLanguageContribution(context, api);
+    const contribution = new RLanguageContribution(context, api, logChannel);
     contribution.runtimeProvider.initializeNativeDiscovery(context, logChannel);
 
     const builder = api.languages
@@ -41,8 +50,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
             registrationId: 'core',
             revision: 1,
         })
+        .setLogChannel(logChannel)
         .setRuntimeProvider(contribution.runtimeProvider)
-        .setSessionManager(contribution.getRuntimeSessionManager(api.services.logChannel))
+        .setSessionManager(contribution.getRuntimeSessionManager())
         .setLspFactory(contribution.runtimeProvider.lspFactory)
         .setBinaryProvider(contribution.binaryProvider);
     for (const descriptor of contribution.getOptionalCapabilities()) {

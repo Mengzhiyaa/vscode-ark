@@ -258,6 +258,8 @@ export function restoreRInstallationFromMetadata(
 export class RLanguageLspFactory implements ILanguageLspFactory {
     readonly languageId = R_LANGUAGE_ID;
 
+    constructor(private readonly _languageLogChannel?: vscode.LogOutputChannel) {}
+
     create(
         runtimeMetadata: LanguageRuntimeMetadata,
         sessionMetadata: IRuntimeSessionMetadata,
@@ -268,7 +270,7 @@ export class RLanguageLspFactory implements ILanguageLspFactory {
             runtimeMetadata.languageVersion,
             sessionMetadata,
             dynState,
-            logChannel
+            this._languageLogChannel ?? logChannel
         );
     }
 }
@@ -277,9 +279,14 @@ export class RLanguageRuntimeProvider implements ILanguageRuntimeProvider<RInsta
     readonly extensionId = 'mengzhiya.vscode-ark';
     readonly languageId = R_LANGUAGE_ID;
     readonly languageName = 'R';
-    readonly lspFactory = new RLanguageLspFactory();
+    readonly lspFactory: RLanguageLspFactory;
 
-    constructor(private readonly _extensionContext: vscode.ExtensionContext) {}
+    constructor(
+        private readonly _extensionContext: vscode.ExtensionContext,
+        private readonly _languageLogChannel?: vscode.LogOutputChannel,
+    ) {
+        this.lspFactory = new RLanguageLspFactory(_languageLogChannel);
+    }
 
     /**
      * Initializes the NativeRFinder for RET-based discovery.
@@ -289,16 +296,17 @@ export class RLanguageRuntimeProvider implements ILanguageRuntimeProvider<RInsta
         context: vscode.ExtensionContext,
         logChannel: vscode.LogOutputChannel
     ): void {
+        const languageLogChannel = this._languageLogChannel ?? logChannel;
         const finder = getNativeRFinder(
             context.extensionPath,
-            logChannel,
+            languageLogChannel,
             context
         );
         setNativeRFinder(finder);
         if (finder.available) {
-            logChannel.info('[R] Native R Environment Tools (RET) discovery initialized');
+            languageLogChannel.info('[R] Native R Environment Tools (RET) discovery initialized');
         } else {
-            logChannel.info('[R] RET binary not available; automatic discovery disabled');
+            languageLogChannel.info('[R] RET binary not available; automatic discovery disabled');
         }
     }
 
@@ -328,18 +336,18 @@ export class RLanguageRuntimeProvider implements ILanguageRuntimeProvider<RInsta
     }
 
     discoverInstallations(logChannel: vscode.LogOutputChannel): AsyncGenerator<RInstallation> {
-        return rRuntimeDiscoverer(logChannel);
+        return rRuntimeDiscoverer(this._languageLogChannel ?? logChannel);
     }
 
     resolveInitialInstallation(logChannel: vscode.LogOutputChannel): Promise<RInstallation | undefined> {
-        return getBestRInstallation(logChannel);
+        return getBestRInstallation(this._languageLogChannel ?? logChannel);
     }
 
     promptForInstallation(
         logChannel: vscode.LogOutputChannel,
         options: ILanguageInstallationPickerOptions = {}
     ): Promise<RInstallation | undefined> {
-        return promptForRPath(logChannel, {
+        return promptForRPath(this._languageLogChannel ?? logChannel, {
             forcePick: options.forcePick,
             allowBrowse: options.allowBrowse,
             persistSelection: options.persistSelection,
@@ -370,7 +378,7 @@ export class RLanguageRuntimeProvider implements ILanguageRuntimeProvider<RInsta
         installation: RInstallation,
         logChannel: vscode.LogOutputChannel
     ): LanguageRuntimeMetadata {
-        return this._toRuntimeMetadata(installation, logChannel);
+        return this._toRuntimeMetadata(installation, this._languageLogChannel ?? logChannel);
     }
 
     createKernelSpec(
@@ -383,7 +391,7 @@ export class RLanguageRuntimeProvider implements ILanguageRuntimeProvider<RInsta
             this._extensionContext,
             installation,
             sessionMode,
-            logChannel,
+            this._languageLogChannel ?? logChannel,
         );
     }
 
@@ -520,12 +528,15 @@ export class RLanguageContribution {
     constructor(
         private readonly _extensionContext: vscode.ExtensionContext,
         private readonly _api: ISupervisorFrameworkApi,
+        private readonly _languageLogChannel?: vscode.LogOutputChannel,
     ) {
-        this.runtimeProvider = new RLanguageRuntimeProvider(_extensionContext);
+        this.runtimeProvider = new RLanguageRuntimeProvider(_extensionContext, _languageLogChannel);
         this.binaryProvider = new RBinaryProvider(_extensionContext);
     }
 
-    getRuntimeSessionManager(logChannel: vscode.LogOutputChannel): RRuntimeManager {
+    getRuntimeSessionManager(
+        logChannel: vscode.LogOutputChannel = this._languageLogChannel ?? this._api.services.logChannel,
+    ): RRuntimeManager {
         this._runtimeSessionManager ??= new RRuntimeManager(
             this._extensionContext,
             this._api,
@@ -536,7 +547,13 @@ export class RLanguageContribution {
     }
 
     getOptionalCapabilities(): readonly ILanguageOptionalCapabilityDescriptor[] {
-        const services = (value: unknown) => value as ILanguageContributionServices;
+        const services = (value: unknown): ILanguageContributionServices => {
+            const contributionServices = value as ILanguageContributionServices;
+            return {
+                ...contributionServices,
+                logChannel: this._languageLogChannel ?? contributionServices.logChannel,
+            };
+        };
         return [
             {
                 id: 'r.sessionActions',

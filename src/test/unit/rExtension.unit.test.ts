@@ -67,6 +67,10 @@ suite('[Unit] Split R extension entry', () => {
         const calls: Array<{ method: string; value?: unknown }> = [];
         const handle = new vscode.Disposable(() => { });
         const builder = {
+            setLogChannel(value: unknown) {
+                calls.push({ method: 'setLogChannel', value });
+                return this;
+            },
             setRuntimeProvider(value: unknown) {
                 calls.push({ method: 'setRuntimeProvider', value });
                 return this;
@@ -134,6 +138,10 @@ suite('[Unit] Split R extension entry', () => {
             registrationId: 'core',
             revision: 1,
         });
+        assert.strictEqual(
+            (calls.find((call) => call.method === 'setLogChannel')?.value as vscode.OutputChannel).name,
+            'R Language Pack',
+        );
         assert.strictEqual(
             (calls.find((call) => call.method === 'setRuntimeProvider')?.value as { languageId?: string }).languageId,
             'r',

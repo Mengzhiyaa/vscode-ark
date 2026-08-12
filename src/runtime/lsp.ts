@@ -160,6 +160,11 @@ function getLspOutputChannel(): vscode.OutputChannel {
     return _lspOutputChannel;
 }
 
+export function disposeLspOutputChannel(): void {
+    _lspOutputChannel?.dispose();
+    _lspOutputChannel = undefined;
+}
+
 /**
  * Wraps an instance of the client side of the R language server.
  * Each R session has its own RLanguageLsp instance.
@@ -349,7 +354,10 @@ export class RLanguageLsp implements ILanguageLsp {
             `for session ${this._metadata.sessionId} on port ${port}`;
 
         this.log(message);
-        getLspOutputChannel().appendLine(message);
+        getLspOutputChannel().appendLine(
+            `\n=== R Language Server session ${this._metadata.sessionId} ` +
+            `(${this._dynState.sessionName}), port ${port}, ${new Date().toISOString()} ===`,
+        );
 
         this.client = new LanguageClient(id, this.languageClientName, serverOptions, clientOptions);
         const client = this.client;

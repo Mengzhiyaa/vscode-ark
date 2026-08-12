@@ -255,6 +255,11 @@ export class RSession implements vscode.Disposable {
     }
 
     private log(message: string, level: vscode.LogLevel = vscode.LogLevel.Info): void {
+        if (this._session.emitLog) {
+            this._session.emitLog(message, level);
+            return;
+        }
+
         const formattedMessage = `${this.sessionId} ${message}`;
         switch (level) {
             case vscode.LogLevel.Error:

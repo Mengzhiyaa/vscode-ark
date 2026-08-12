@@ -252,7 +252,7 @@ export async function createJupyterKernelSpec(
     let startup_command: string | undefined = rInstallation.startupCommand;
 
     if (startup_command) {
-        log.info(`Using RET startup command: ${startup_command}`);
+        log.debug('Using the RET-provided startup environment command');
     }
 
     if (
@@ -276,7 +276,7 @@ export async function createJupyterKernelSpec(
             );
         } else {
             startup_command = `conda activate ${quoteShellArgument(environmentPath)}`;
-            log.info(`Using conda activation: ${startup_command}`);
+            log.debug('Using a conda startup environment command');
         }
     } else if (
         !startup_command &&
@@ -356,7 +356,10 @@ export async function createJupyterKernelSpec(
         startup_command,
     };
 
-    log.debug(`Kernel spec created: ${JSON.stringify(kernelSpec, null, 2)}`);
+    log.debug(
+        `Kernel spec created with ${argv.length} argument(s) and ` +
+        `${Object.keys(env).length} environment variable(s)`,
+    );
     return kernelSpec;
 }
 
