@@ -514,6 +514,7 @@ suite('[Unit] RLanguageContribution', () => {
             .digest('hex')
             .substring(0, 32);
 
+        assert.strictEqual(metadata.extensionId, contribution.runtimeProvider.extensionId);
         assert.strictEqual(metadata.runtimeId, expectedRuntimeId);
     });
 

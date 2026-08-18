@@ -316,6 +316,7 @@ export class RLanguageRuntimeProvider implements ILanguageRuntimeProvider<RInsta
     ): LanguageRuntimeMetadata {
         return {
             runtimeId: createRuntimeId(installation.binpath, installation.version),
+            extensionId: this.extensionId,
             runtimeName: this.formatRuntimeName(installation),
             runtimeShortName: installation.version,
             runtimePath: installation.binpath,
