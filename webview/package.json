@@ -10,12 +10,12 @@
   },
   "dependencies": {
     "monaco-editor": "^0.56.0",
-    "vscode-jsonrpc": "^8.2.1",
+    "vscode-jsonrpc": "^9.0.1",
     "vscode-oniguruma": "^2.0.1",
     "vscode-textmate": "^9.3.2"
   },
   "devDependencies": {
     "typescript": "^5.9.3",
-    "vite": "^8.1.5"
+    "vite": "^8.2.1"
   }
 }

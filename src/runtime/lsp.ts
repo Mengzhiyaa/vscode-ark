@@ -152,10 +152,10 @@ export function shouldProvideCompletionForDocument(
  * sessions, and the start of each session is logged with a session ID, so we
  * use a single output channel for all LSP sessions.
  */
-let _lspOutputChannel: vscode.OutputChannel | undefined;
-function getLspOutputChannel(): vscode.OutputChannel {
+let _lspOutputChannel: vscode.LogOutputChannel | undefined;
+function getLspOutputChannel(): vscode.LogOutputChannel {
     if (!_lspOutputChannel) {
-        _lspOutputChannel = vscode.window.createOutputChannel('R Language Server');
+        _lspOutputChannel = vscode.window.createOutputChannel('R Language Server', { log: true });
     }
     return _lspOutputChannel;
 }
