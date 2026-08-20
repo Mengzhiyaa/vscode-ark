@@ -61,7 +61,7 @@
     "minimumRVersion": "4.2.0",
     "binaryDependencies": {
       "ark": "ark-0.1.252-486-d0569cc",
-      "ret": "v0.1.2"
+      "ret": "v0.1.3"
     },
     "binaryChecksums": {
       "ark": {

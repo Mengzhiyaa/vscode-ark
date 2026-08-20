@@ -209,7 +209,7 @@ suite('[Unit] RLanguageContribution', () => {
                     positron: {
                         binaryDependencies: {
                             ark: 'ark-0.1.252-14-6618e9a',
-                            ret: 'v0.1.2',
+                            ret: 'v0.1.3',
                         },
                     },
                 },
@@ -230,14 +230,14 @@ suite('[Unit] RLanguageContribution', () => {
             'ark-0.1.252-14-6618e9a-linux-x64.zip',
         );
 
-        assert.strictEqual(definitions.ret.reportedVersion, '0.1.2');
+        assert.strictEqual(definitions.ret.reportedVersion, '0.1.3');
         assert.strictEqual(definitions.ret.archiveType, 'tar.gz');
         assert.strictEqual(
             definitions.ret.archivePattern(
                 definitions.ret.version!,
                 'linux-x64',
             ),
-            'ret-v0.1.2-linux-x64.tar.gz',
+            'ret-v0.1.3-linux-x64.tar.gz',
         );
     });
 

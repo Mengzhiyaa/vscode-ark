@@ -142,6 +142,7 @@ const BINARY_CONFIGS = {
     ret: {
         repo: 'Mengzhiyaa/r-environment-tools',
         binaryName: (platform) => platform.startsWith('windows') ? 'ret.exe' : 'ret',
+        staleBinaryNames: (platform) => platform.startsWith('windows') ? ['ret'] : ['ret.exe'],
         archivePattern: (version, platform) => `ret-${version}-${platform}.tar.gz`,
         archiveType: 'tar.gz',
         installDir: 'resources/ret',
@@ -402,6 +403,10 @@ async function installBinary(name, config, version, platform, checksums) {
                 fs.rmSync(destination, { force: true });
             }
             fs.renameSync(stagedDestination, destination);
+
+            for (const staleBinaryName of config.staleBinaryNames?.(platform) ?? []) {
+                fs.rmSync(path.join(installDir, staleBinaryName), { force: true });
+            }
         } finally {
             fs.rmSync(stagedDestination, { force: true });
         }
