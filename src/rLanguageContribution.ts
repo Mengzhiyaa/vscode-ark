@@ -12,6 +12,7 @@ import type {
     ILanguageLspFactory,
     ILanguageOptionalCapabilityDescriptor,
     ILanguageRuntimeProvider,
+    ILanguageRuntimeSession,
     LanguageRuntimeDynState,
     LanguageRuntimeMetadata,
     LanguageRuntimeSessionLocation,
@@ -34,6 +35,11 @@ import { createJupyterKernelSpec } from './runtime/kernel-spec';
 import { RLanguageLsp } from './runtime/lsp';
 import { RRuntimeManager } from './runtime-manager';
 import { RSessionManager } from './session-manager';
+import {
+    quoteRString,
+    RuntimeCodeExecutionModeValue,
+    RuntimeErrorBehaviorValue,
+} from './rExecution';
 import {
     formatRuntimeName,
     getBestRInstallation,
@@ -393,6 +399,20 @@ export class RLanguageRuntimeProvider implements ILanguageRuntimeProvider<RInsta
             installation,
             sessionMode,
             this._languageLogChannel ?? logChannel,
+        );
+    }
+
+    async setWorkingDirectory(
+        session: ILanguageRuntimeSession,
+        workingDirectory: string,
+    ): Promise<void> {
+        await session.executeAndWait(
+            `setwd(${quoteRString(workingDirectory)})`,
+            {
+                mode: RuntimeCodeExecutionModeValue.Silent,
+                errorBehavior: RuntimeErrorBehaviorValue.Stop,
+                attribution: { source: 'ark.supervisor.setWorkingDirectory' },
+            },
         );
     }
 

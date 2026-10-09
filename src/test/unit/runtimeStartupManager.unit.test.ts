@@ -77,6 +77,7 @@ function makeRuntimeMetadata(installation: RInstallation): LanguageRuntimeMetada
         languageId: 'r',
         languageName: 'R',
         languageVersion: installation.version,
+        startupBehavior: 'explicit' as LanguageRuntimeMetadata['startupBehavior'],
         extraRuntimeData: {
             homepath: installation.homepath,
             binpath: installation.binpath,

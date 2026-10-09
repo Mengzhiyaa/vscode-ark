@@ -78,6 +78,7 @@ function makeRuntimeMetadata(): LanguageRuntimeMetadata {
         languageId: 'r',
         languageName: 'R',
         languageVersion: '4.4.1',
+        startupBehavior: 'explicit' as LanguageRuntimeMetadata['startupBehavior'],
         extraRuntimeData: {
             homepath: '/usr/lib/R',
             binpath: '/usr/bin/R',
@@ -563,6 +564,7 @@ suite('[Unit] RLanguageContribution', () => {
             languageId: 'r',
             languageName: 'R',
             languageVersion: '4.1.3',
+            startupBehavior: 'explicit' as LanguageRuntimeMetadata['startupBehavior'],
             extraRuntimeData: {
                 homepath: homeDir,
                 binpath: binPath,

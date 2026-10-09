@@ -352,6 +352,7 @@ suite('[Unit] RInstallation', () => {
             languageId: 'r',
             languageName: 'R',
             languageVersion: '4.3.3',
+            startupBehavior: 'explicit' as LanguageRuntimeMetadata['startupBehavior'],
             extraRuntimeData: {
                 homepath: '/legacy/lib/R',
                 binpath: '/legacy/bin/R',
@@ -401,6 +402,7 @@ suite('[Unit] RInstallation', () => {
             languageId: 'r',
             languageName: 'R',
             languageVersion: '4.4.1',
+            startupBehavior: 'explicit' as LanguageRuntimeMetadata['startupBehavior'],
             extraRuntimeData: {
                 homepath: '/usr/local/lib/R',
                 binpath: '/usr/local/bin/R',

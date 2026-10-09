@@ -82,6 +82,7 @@ function makeRuntimeMetadata(): LanguageRuntimeMetadata {
         languageId: 'r',
         languageName: 'R',
         languageVersion: '4.4.1',
+        startupBehavior: 'explicit' as LanguageRuntimeMetadata['startupBehavior'],
     };
 }
 
