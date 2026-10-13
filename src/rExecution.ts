@@ -14,6 +14,7 @@ import { R_LANGUAGE_ID } from './languageIds';
 const READY_STATES = new Set(['ready', 'idle', 'busy']);
 export const RuntimeCodeExecutionModeValue = {
     Interactive: 'interactive' as RuntimeCodeExecutionMode,
+    Unprocessed: 'unprocessed' as RuntimeCodeExecutionMode,
     NonInteractive: 'non-interactive' as RuntimeCodeExecutionMode,
     Silent: 'silent' as RuntimeCodeExecutionMode,
     Transient: 'transient' as RuntimeCodeExecutionMode,
@@ -71,7 +72,7 @@ export async function executeRCode(
         }
 
         const id = crypto.randomUUID();
-        session.execute(
+        await session.execute(
             code,
             id,
             options.mode ?? RuntimeCodeExecutionModeValue.Interactive,

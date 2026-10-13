@@ -6,6 +6,7 @@ import { registerArkDebugAdapterFactory } from './debugger';
 import { RLanguageContribution } from './rLanguageContribution';
 import { disposeLspOutputChannel } from './runtime/lsp';
 import { RedactingLogOutputChannel } from './logging';
+import { registerRDataImporters } from './data-import';
 
 const SUPERVISOR_EXTENSION_ID = 'mengzhiya.vscode-supervisor';
 
@@ -59,6 +60,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         builder.addOptionalCapability(descriptor);
     }
     context.subscriptions.push(builder.commit());
+    if (typeof api.registerDataImporter === 'function') {
+        context.subscriptions.push(registerRDataImporters(api));
+    }
 }
 
 export function deactivate(): void {

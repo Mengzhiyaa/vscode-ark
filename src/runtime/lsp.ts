@@ -25,6 +25,7 @@ import {
 import { RErrorHandler } from './error-handler';
 import { VirtualDocumentProvider } from './virtual-documents';
 import { RStatementRangeProvider } from './statement-range';
+import { RInputBoundaryProvider } from './input-boundaries';
 import { RHelpTopicProvider } from './help';
 import {
     getArkLspSettings,
@@ -185,6 +186,7 @@ export class RLanguageLsp implements ILanguageLsp {
 
     /** Positron LSP extension providers */
     private _statementRangeProvider?: RStatementRangeProvider;
+    private _inputBoundaryProvider?: RInputBoundaryProvider;
     private _helpTopicProvider?: RHelpTopicProvider;
     private _virtualDocumentProvider?: VirtualDocumentProvider;
 
@@ -276,6 +278,7 @@ export class RLanguageLsp implements ILanguageLsp {
      * @param port The port on which the language server is listening.
      */
     public async activate(port: number): Promise<void> {
+        this._inputBoundaryProvider = undefined;
         this.activationDisposables.forEach(disposable => disposable.dispose());
         this.activationDisposables = [];
 
@@ -440,6 +443,7 @@ export class RLanguageLsp implements ILanguageLsp {
         this.log('Registered VirtualDocumentProvider for ark:// URIs', vscode.LogLevel.Debug);
 
         this._statementRangeProvider = new RStatementRangeProvider(client);
+        this._inputBoundaryProvider = new RInputBoundaryProvider(client);
         this.log('Registered RStatementRangeProvider', vscode.LogLevel.Debug);
 
         this._helpTopicProvider = new RHelpTopicProvider(client);
@@ -452,6 +456,10 @@ export class RLanguageLsp implements ILanguageLsp {
      */
     public get statementRangeProvider(): RStatementRangeProvider | undefined {
         return this._statementRangeProvider;
+    }
+
+    public get inputBoundaryProvider(): RInputBoundaryProvider | undefined {
+        return this._inputBoundaryProvider;
     }
 
     /**
@@ -468,6 +476,7 @@ export class RLanguageLsp implements ILanguageLsp {
      * @returns A promise that resolves when the client has been stopped.
      */
     public async deactivate() {
+        this._inputBoundaryProvider = undefined;
         if (!this.client) {
             return;
         }
@@ -479,6 +488,7 @@ export class RLanguageLsp implements ILanguageLsp {
         this.log(`${this.languageClientName} is stopping`, vscode.LogLevel.Debug);
 
         await this._initializing;
+        this._inputBoundaryProvider = undefined;
 
         const stopped = new Promise<void>((resolve) => {
             const disposable = this.client!.onDidChangeState((event) => {

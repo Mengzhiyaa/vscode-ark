@@ -40,7 +40,7 @@ function getCliHyperlinkEnvironment(): Record<string, string> {
     };
 }
 
-function findReposConf(): string | undefined {
+export function findReposConf(): string | undefined {
     const configDirs: string[] = [];
     const userConfigDir = process.env.XDG_CONFIG_HOME ??
         (process.platform === 'win32'

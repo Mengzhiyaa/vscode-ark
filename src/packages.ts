@@ -5,7 +5,12 @@ import type {
     ILanguageRuntimeSession,
     LanguageRuntimePackage,
     PackageSpec,
+    PackageRepositoryRequest,
+    PackageRepositoryResponse,
 } from './types/supervisor-api';
+import { resolveRRepositoryUrl } from './packageRepository';
+import { requestPackageRepository } from './packageRepositoryRequest';
+import type { PersistedRMetadataExtra } from './runtime/r-installation';
 import {
     RuntimeCodeExecutionModeValue,
     RuntimeErrorBehaviorValue,
@@ -36,6 +41,29 @@ export class RPackageManager implements ILanguageRuntimePackageManager {
         ) ?? [];
         result.sort((a, b) => a.name.toLowerCase().localeCompare(b.name.toLowerCase()));
         return result;
+    }
+
+    async getPackageDetail(name: string, token?: vscode.CancellationToken): Promise<Partial<LanguageRuntimePackage> | undefined> {
+        this._throwIfCancellationRequested(token);
+        if (!name.trim()) { return undefined; }
+        this._validatePackageName(name);
+        const detail = await this._callMethod<(Partial<LanguageRuntimePackage> & { sourceRepository?: string }) | null>(
+            'pkg_detail', token, name,
+        );
+        if (!detail) { return undefined; }
+        return {
+            ...detail,
+            ...(detail.sourceRepository && !detail.source ? { source: detail.sourceRepository } : {}),
+        };
+    }
+
+    async packageRepositoryUrl(token?: vscode.CancellationToken): Promise<string | undefined> {
+        this._throwIfCancellationRequested(token);
+        return resolveRRepositoryUrl(this._session.runtimeMetadata.extraRuntimeData as PersistedRMetadataExtra | undefined);
+    }
+
+    repositoryRequest(request: PackageRepositoryRequest, token?: vscode.CancellationToken): Promise<PackageRepositoryResponse> {
+        return requestPackageRepository(request, token);
     }
 
     async getPackageMetadata(

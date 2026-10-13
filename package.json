@@ -29,6 +29,7 @@
   ],
   "activationEvents": [
     "onStartupFinished",
+    "onSupervisorDataExplorerImport",
     "onDebugResolve:ark",
     "onLanguage:rdata",
     "onLanguage:rds",
