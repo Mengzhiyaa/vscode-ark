@@ -7,6 +7,7 @@
  * by the language extension.
  */
 import { getInjectedMonaco } from "../../../monaco/monacoContext";
+import rLanguageConfiguration from "../../../../../../language-configuration.json";
 
 // Track if language has been registered
 let isRegistered = false;
@@ -57,7 +58,9 @@ export function registerRLanguage(): void {
             { open: '"', close: '"' },
             { open: "'", close: "'" }
         ],
-        wordPattern: /(-?\d*\.\d\w*)|([^`~!@#%^&*()\-=+[{\]}\\|;:'",.<>\/?\s]+)/g
+        // Share the Host's identifier boundaries: dots belong to R names,
+        // while `$`, `@`, and `:` separate the receiver from its completion.
+        wordPattern: new RegExp(rLanguageConfiguration.wordPattern, 'g')
     });
 
     isRegistered = true;

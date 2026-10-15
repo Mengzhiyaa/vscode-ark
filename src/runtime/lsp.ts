@@ -8,6 +8,7 @@ import * as vscode from 'vscode';
 import { Socket } from 'net';
 import type {
     ILanguageLsp,
+    ILanguageConsoleLspConfiguration,
     ILanguageLspStateChangeEvent,
     LanguageLspState,
     LanguageRuntimeDynState,
@@ -17,12 +18,13 @@ import {
     LanguageClient,
     LanguageClientOptions,
     State,
-    StreamInfo,
+    MessageTransports,
     RevealOutputChannelOn,
     DocumentSelector,
     DidChangeConfigurationNotification,
 } from 'vscode-languageclient/node';
 import { RErrorHandler } from './error-handler';
+import { HostConsoleLspBridge } from './console-lsp';
 import { VirtualDocumentProvider } from './virtual-documents';
 import { RStatementRangeProvider } from './statement-range';
 import { RInputBoundaryProvider } from './input-boundaries';
@@ -173,6 +175,7 @@ export function disposeLspOutputChannel(): void {
 export class RLanguageLsp implements ILanguageLsp {
     /** The language client instance, if it has been created */
     private client?: LanguageClient;
+    readonly consoleLspBridge = new HostConsoleLspBridge(() => this.client);
 
     private _state: LanguageLspState = LANGUAGE_LSP_STATE.Uninitialized;
     private _stateEmitter = new vscode.EventEmitter<ILanguageLspStateChangeEvent>();
@@ -203,6 +206,37 @@ export class RLanguageLsp implements ILanguageLsp {
             `R language client (${this._version}) for session ` +
             `${_dynState.sessionName} - '${_metadata.sessionId}'`;
         this._logChannel = logChannel;
+    }
+
+    /** Console preferences; the Host client owns server initialization and configuration. */
+    public get consoleLspConfiguration(): ILanguageConsoleLspConfiguration | undefined {
+        if (this._metadata.sessionMode !== 'console') {
+            return undefined;
+        }
+
+        const workingDirectory = this._dynState.currentWorkingDirectory ?? this._metadata.workingDirectory;
+        const folder = workingDirectory
+            ? vscode.workspace.getWorkspaceFolder(vscode.Uri.file(workingDirectory))
+            : undefined;
+        const root = folder ?? vscode.workspace.workspaceFolders?.[0];
+        const settings = getArkLspSettings(root?.uri);
+        // Ark requests nested positron.r.* sections through workspace/configuration.
+        // Supply both prefixes so the browser follows the Host's canonical mapping.
+        const rSettings = {
+            ...settings,
+            diagnostics: { ...settings.diagnostics, enabled: settings.diagnostics.enable },
+        };
+
+        return {
+            rootUri: root?.uri.toString(),
+            workspaceFolders: vscode.workspace.workspaceFolders?.map(folder => ({
+                uri: folder.uri.toString(),
+                name: folder.name,
+            })),
+            settings: { ark: { lsp: rSettings }, positron: { r: rSettings } },
+            allowedCommands: [],
+            kernelCompletionFallback: true,
+        };
     }
 
     private log(msg: string, level: vscode.LogLevel = vscode.LogLevel.Info): void {
@@ -264,13 +298,6 @@ export class RLanguageLsp implements ILanguageLsp {
         this._stateEmitter.fire({ oldState: old, newState: state });
     }
 
-    private createRequestTextDocumentUri(): string {
-        const requestPath = this._metadata.notebookUri
-            ? `/notebook-repl-r-${this._metadata.sessionId}/input-${Date.now()}.R`
-            : `/console/input-${Date.now()}.R`;
-        return vscode.Uri.from({ scheme: 'inmemory', path: requestPath }).toString();
-    }
-
     /**
      * Activate the language server; returns a promise that resolves when the LSP is
      * activated.
@@ -282,15 +309,13 @@ export class RLanguageLsp implements ILanguageLsp {
         this.activationDisposables.forEach(disposable => disposable.dispose());
         this.activationDisposables = [];
 
-        const serverOptions = async (): Promise<StreamInfo> => {
-            const out = new PromiseHandles<StreamInfo>();
+        const consoleBridge = this.consoleLspBridge;
+        const serverOptions = async (): Promise<MessageTransports> => {
+            const out = new PromiseHandles<MessageTransports>();
             const socket = new Socket();
 
             socket.on('ready', () => {
-                out.resolve({
-                    reader: socket,
-                    writer: socket,
-                });
+                out.resolve(consoleBridge.createTransports(socket));
             });
             socket.on('error', (error) => {
                 out.reject(error);
@@ -313,8 +338,9 @@ export class RLanguageLsp implements ILanguageLsp {
             revealOutputChannelOn: RevealOutputChannelOn.Never,
             errorHandler: new RErrorHandler(this._version, port, this._logChannel),
             middleware: {
+                ...consoleBridge.middleware,
                 handleDiagnostics(uri, diagnostics, next) {
-                    if (!shouldHandleLspDiagnostics(uri)) {
+                    if ((uri.scheme === 'inmemory' && uri.authority === 'console') || !shouldHandleLspDiagnostics(uri)) {
                         return undefined;
                     }
 
@@ -328,6 +354,7 @@ export class RLanguageLsp implements ILanguageLsp {
                     return next(document, position, context, token);
                 },
                 workspace: {
+                    ...consoleBridge.middleware.workspace,
                     async configuration(params, token, next) {
                         const fallback = await next(params, token);
                         if (!Array.isArray(fallback)) {
@@ -572,153 +599,10 @@ export class RLanguageLsp implements ILanguageLsp {
     async dispose() {
         this.activationDisposables.forEach(disposable => disposable.dispose());
         await this.deactivate();
+        this.consoleLspBridge.dispose();
     }
 
     public showOutput() {
         getLspOutputChannel().show();
-    }
-
-    // =========================================================================
-    // LSP Request Methods (for Console LSP Bridge)
-    // =========================================================================
-
-    /**
-     * Request code completion at a position in a virtual document.
-     * Used by the console to get LSP-based completions.
-     *
-     * @param code The code content
-     * @param position 0-based line and character position
-     * @returns Array of LSP completion items
-     */
-    async requestCompletion(
-        code: string,
-        position: { line: number; character: number },
-    ): Promise<any[]> {
-        if (!this.client || this._state !== LANGUAGE_LSP_STATE.Running) {
-            this.log('LSP not ready for completion request', vscode.LogLevel.Debug);
-            return [];
-        }
-
-        try {
-            const uri = this.createRequestTextDocumentUri();
-            const textDocument = {
-                uri,
-                languageId: 'r',
-                version: 1,
-                text: code,
-            };
-
-            this.client.sendNotification('textDocument/didOpen', { textDocument });
-
-            const result = await this.client.sendRequest('textDocument/completion', {
-                textDocument: { uri },
-                position,
-            });
-
-            this.client.sendNotification('textDocument/didClose', {
-                textDocument: { uri },
-            });
-
-            if (Array.isArray(result)) {
-                return result;
-            }
-
-            if (result && typeof result === 'object' && 'items' in result) {
-                return (result as any).items || [];
-            }
-
-            return [];
-        } catch (error) {
-            this.log(`Completion request failed: ${error}`, vscode.LogLevel.Error);
-            return [];
-        }
-    }
-
-    /**
-     * Request hover information at a position in a virtual document.
-     * Used by the console to get LSP-based hover documentation.
-     *
-     * @param code The code content
-     * @param position 0-based line and character position
-     * @returns Hover information or null
-     */
-    async requestHover(
-        code: string,
-        position: { line: number; character: number },
-    ): Promise<any | null> {
-        if (!this.client || this._state !== LANGUAGE_LSP_STATE.Running) {
-            this.log('LSP not ready for hover request', vscode.LogLevel.Debug);
-            return null;
-        }
-
-        try {
-            const uri = this.createRequestTextDocumentUri();
-            const textDocument = {
-                uri,
-                languageId: 'r',
-                version: 1,
-                text: code,
-            };
-
-            this.client.sendNotification('textDocument/didOpen', { textDocument });
-
-            const result = await this.client.sendRequest('textDocument/hover', {
-                textDocument: { uri },
-                position,
-            });
-
-            this.client.sendNotification('textDocument/didClose', {
-                textDocument: { uri },
-            });
-
-            return result;
-        } catch (error) {
-            this.log(`Hover request failed: ${error}`, vscode.LogLevel.Error);
-            return null;
-        }
-    }
-
-    /**
-     * Request signature help at a position in a virtual document.
-     * Used by the console to get LSP-based function signature information.
-     *
-     * @param code The code content
-     * @param position 0-based line and character position
-     * @returns Signature help information or null
-     */
-    async requestSignatureHelp(
-        code: string,
-        position: { line: number; character: number },
-    ): Promise<any | null> {
-        if (!this.client || this._state !== LANGUAGE_LSP_STATE.Running) {
-            this.log('LSP not ready for signature help request', vscode.LogLevel.Debug);
-            return null;
-        }
-
-        try {
-            const uri = this.createRequestTextDocumentUri();
-            const textDocument = {
-                uri,
-                languageId: 'r',
-                version: 1,
-                text: code,
-            };
-
-            this.client.sendNotification('textDocument/didOpen', { textDocument });
-
-            const result = await this.client.sendRequest('textDocument/signatureHelp', {
-                textDocument: { uri },
-                position,
-            });
-
-            this.client.sendNotification('textDocument/didClose', {
-                textDocument: { uri },
-            });
-
-            return result;
-        } catch (error) {
-            this.log(`Signature help request failed: ${error}`, vscode.LogLevel.Error);
-            return null;
-        }
     }
 }
