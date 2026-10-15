@@ -219,7 +219,7 @@ export async function createJupyterKernelSpec(
     });
 
     if (!kernelPath) {
-        throw new Error('Unable to find ARK kernel binary. Please run "npm run install:ark"');
+        throw new Error('Unable to find a compatible ARK kernel binary. Please run "npm run install:binaries"');
     }
 
     log.info(`Using ARK kernel at: ${kernelPath}`);

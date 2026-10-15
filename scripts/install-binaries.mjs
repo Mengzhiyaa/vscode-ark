@@ -432,6 +432,21 @@ async function installWithRetries(name, config, version, platform, checksums, re
     throw lastError;
 }
 
+async function installArk(version, platform, checksums, retries) {
+    const platforms = platform.startsWith('windows-')
+        ? ['windows-x64', 'windows-arm64']
+        : [platform];
+    for (const target of platforms) {
+        const config = {
+            ...BINARY_CONFIGS.ark,
+            installDir: target.startsWith('windows-')
+                ? path.join(BINARY_CONFIGS.ark.installDir, target)
+                : BINARY_CONFIGS.ark.installDir,
+        };
+        await installWithRetries('ark', config, version, target, checksums, retries);
+    }
+}
+
 async function main() {
     const { latestArk, retries, platform: explicitPlatform } = parseArgs();
     const platform = detectPlatform(explicitPlatform);
@@ -440,9 +455,7 @@ async function main() {
 
     if (latestArk) {
         const latest = await resolveLatestArkRelease();
-        await installWithRetries(
-            'ark',
-            BINARY_CONFIGS.ark,
+        await installArk(
             latest.version,
             platform,
             { ark: latest.checksums },
@@ -453,6 +466,10 @@ async function main() {
     }
 
     for (const [name, version] of Object.entries(versions)) {
+        if (name === 'ark') {
+            await installArk(version, platform, checksums, retries);
+            continue;
+        }
         const config = BINARY_CONFIGS[name];
         if (!config) {
             console.warn(`Unknown binary '${name}' in binaryDependencies, skipping`);

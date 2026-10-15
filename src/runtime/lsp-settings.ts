@@ -19,6 +19,7 @@ export interface ArkLspSettings {
 }
 
 export interface ArkLspSettingOverrides {
+    diagnosticsEnabled?: unknown;
     diagnosticsEnable?: unknown;
     includeAssignmentsInBlocks?: unknown;
     includeCommentSections?: unknown;
@@ -66,7 +67,8 @@ export function mergeArkLspSettings(
     return {
         diagnostics: {
             enable: booleanSetting(
-                canonical.diagnosticsEnable ?? legacy.diagnosticsEnable,
+                canonical.diagnosticsEnabled ?? canonical.diagnosticsEnable ??
+                    legacy.diagnosticsEnabled ?? legacy.diagnosticsEnable,
                 DEFAULT_ARK_LSP_SETTINGS.diagnostics.enable,
             ),
         },
@@ -113,6 +115,7 @@ function explicitSetting<T>(
 
 function readOverrides(section: string, resource?: vscode.Uri): ArkLspSettingOverrides {
     return {
+        diagnosticsEnabled: explicitSetting<boolean>(section, 'diagnostics.enabled', resource),
         diagnosticsEnable: explicitSetting<boolean>(section, 'diagnostics.enable', resource),
         includeAssignmentsInBlocks: explicitSetting<boolean>(
             section,
@@ -164,6 +167,7 @@ export function mapArkLspConfiguration(
 
     const relativeSection = section === prefix ? '' : section!.slice(prefix.length + 1);
     switch (relativeSection) {
+        case 'diagnostics.enabled':
         case 'diagnostics.enable':
             return settings.diagnostics.enable;
         case 'symbols.includeAssignmentsInBlocks':
@@ -176,6 +180,7 @@ export function mapArkLspConfiguration(
             return {
                 ...asRecord(fallback),
                 ...settings.diagnostics,
+                enabled: settings.diagnostics.enable,
             };
         case 'symbols':
             return {
@@ -199,6 +204,7 @@ export function mapArkLspConfiguration(
                 diagnostics: {
                     ...asRecord(root.diagnostics),
                     ...settings.diagnostics,
+                    enabled: settings.diagnostics.enable,
                 },
                 symbols: {
                     ...asRecord(root.symbols),

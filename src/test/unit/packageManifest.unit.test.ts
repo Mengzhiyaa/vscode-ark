@@ -76,7 +76,7 @@ suite('[Unit] R package manifest', () => {
         assert.strictEqual(packageJson.homepage, 'https://github.com/Mengzhiyaa/vscode-ark#readme');
         assert.strictEqual(packageJson.bugs?.url, 'https://github.com/Mengzhiyaa/vscode-ark/issues');
         assert.deepStrictEqual(packageJson.workspaces, ['webview']);
-        assert.strictEqual(packageJson.positron?.binaryDependencies?.ark, 'ark-0.1.252-486-d0569cc');
+        assert.strictEqual(packageJson.positron?.binaryDependencies?.ark, 'ark-0.1.252-355-f1af004');
         assert.strictEqual(packageJson.positron?.binaryDependencies?.ret, 'v0.1.3');
         assert.match(
             packageJson.positron?.binaryChecksums?.ark?.['linux-x64'] ?? '',

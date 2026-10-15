@@ -65,6 +65,10 @@ suite('[Unit] Ark LSP settings', () => {
             mapArkLspConfiguration('positron.r.diagnostics.enable', true, settings),
             false,
         );
+        assert.strictEqual(
+            mapArkLspConfiguration('positron.r.diagnostics.enabled', true, settings),
+            false,
+        );
         assert.deepStrictEqual(
             mapArkLspConfiguration('positron.r.symbols', { existing: 'value' }, settings),
             { existing: 'value', includeAssignmentsInBlocks: true },
@@ -73,7 +77,7 @@ suite('[Unit] Ark LSP settings', () => {
             mapArkLspConfiguration('positron.r', { pipe: 'native' }, settings),
             {
                 pipe: 'native',
-                diagnostics: { enable: false },
+                diagnostics: { enable: false, enabled: false },
                 symbols: { includeAssignmentsInBlocks: true },
                 workspaceSymbols: { includeCommentSections: true },
                 trace: { server: 'messages' },

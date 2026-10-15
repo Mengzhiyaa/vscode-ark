@@ -24,7 +24,7 @@ interface RPackageInstallation {
 }
 
 export class RPackageManager implements ILanguageRuntimePackageManager {
-    private _pakDeclined = false;
+    private _pakRecommendationShown = false;
 
     constructor(
         private readonly _session: ILanguageRuntimeSession,
@@ -93,7 +93,7 @@ export class RPackageManager implements ILanguageRuntimePackageManager {
 
         if (isRenv) {
             const pkgVector = this._formatRVector(this._toPackageSpecStrings(packages));
-            code = `renv::install(${pkgVector}, lock = TRUE, prompt = FALSE)`;
+            code = `renv::install(${pkgVector}, prompt = FALSE)`;
         } else {
             const installingPak = packages.some(pkg => pkg.name === 'pak');
             const method = await this._resolveMethod(!installingPak);
@@ -107,6 +107,7 @@ export class RPackageManager implements ILanguageRuntimePackageManager {
         }
 
         await this._execute(code, token);
+        this._afterPackageOperation(isRenv);
         this._invalidatePackageResourceCaches();
     }
 
@@ -140,10 +141,7 @@ export class RPackageManager implements ILanguageRuntimePackageManager {
             // Ignore namespace unloading failures.
         }
 
-        if (isRenv) {
-            await this._executeSilently('renv::snapshot(prompt = FALSE)');
-        }
-
+        this._afterPackageOperation(isRenv);
         this._invalidatePackageResourceCaches();
     }
 
@@ -156,7 +154,7 @@ export class RPackageManager implements ILanguageRuntimePackageManager {
 
         if (isRenv) {
             const pkgVector = this._formatRVector(this._toPackageSpecStrings(packages));
-            code = `renv::install(${pkgVector}, lock = TRUE, prompt = FALSE)`;
+            code = `renv::install(${pkgVector}, prompt = FALSE)`;
         } else {
             const method = await this._resolveMethod(true);
             if (method === 'pak') {
@@ -169,6 +167,7 @@ export class RPackageManager implements ILanguageRuntimePackageManager {
         }
 
         await this._execute(code, token);
+        this._afterPackageOperation(isRenv);
         this._invalidatePackageResourceCaches();
     }
 
@@ -176,7 +175,8 @@ export class RPackageManager implements ILanguageRuntimePackageManager {
         this._throwIfCancellationRequested(token);
 
         if (await this._detectRenv()) {
-            await this._execute('renv::update(lock = TRUE, prompt = FALSE)', token);
+            await this._execute('renv::update(prompt = FALSE)', token);
+            this._afterPackageOperation(true);
             this._invalidatePackageResourceCaches();
             return;
         }
@@ -192,6 +192,7 @@ export class RPackageManager implements ILanguageRuntimePackageManager {
             await this._execute('update.packages(ask = FALSE)', token);
         }
 
+        this._afterPackageOperation(false);
         this._invalidatePackageResourceCaches();
     }
 
@@ -271,14 +272,47 @@ export class RPackageManager implements ILanguageRuntimePackageManager {
         return this._resolveMethod(false);
     }
 
-    private async _promptInstallPak(): Promise<boolean> {
+    /** Follow-up work must never change the result of the completed operation. */
+    private _afterPackageOperation(isRenv: boolean): void {
+        if (isRenv) {
+            if (!vscode.workspace.getConfiguration('packages.r').get<boolean>('renvAutoSnapshot', true)) {
+                return;
+            }
+            void this._execute('renv::snapshot(prompt = FALSE)').catch(error => {
+                this._services.logChannel.warn(`[R Packages] Failed to update renv.lock: ${error}`);
+                void vscode.window.showWarningMessage(
+                    'Failed to update the renv lockfile with renv::snapshot(). Your renv.lock file may be out of date.',
+                );
+            });
+        } else {
+            void this._maybeRecommendPak().catch(error => {
+                this._services.logChannel.warn(`[R Packages] Failed to recommend or install pak: ${error}`);
+            });
+        }
+    }
+
+    private async _maybeRecommendPak(): Promise<void> {
+        if (this._pakRecommendationShown || this._getConfiguredInstaller() !== 'auto' || await this._detectPak()) {
+            return;
+        }
+        // Recheck after the probe so concurrent operations cannot show two prompts.
+        if (this._pakRecommendationShown) {
+            return;
+        }
+        this._pakRecommendationShown = true;
         const install = 'Install pak';
+        const openSettings = 'Open Settings';
         const result = await vscode.window.showInformationMessage(
             'The pak package provides faster and more reliable package operations. Would you like to install it?',
             install,
-            'Not now',
+            openSettings,
         );
-        return result === install;
+        if (result === install) {
+            await this._execute('install.packages("pak")');
+            this._invalidatePackageResourceCaches();
+        } else if (result === openSettings) {
+            await vscode.commands.executeCommand('workbench.action.openSettings', '@id:packages.r.installer');
+        }
     }
 
     private async _resolveMethod(allowInstallPak: boolean): Promise<string> {
@@ -300,16 +334,7 @@ export class RPackageManager implements ILanguageRuntimePackageManager {
             return (await this._detectPak()) ? 'pak' : 'base';
         }
 
-        if (this._pakDeclined) {
-            return 'base';
-        }
-
-        if (await this._promptInstallPak()) {
-            await this._execute('install.packages("pak")');
-            return (await this._detectPak()) ? 'pak' : 'base';
-        }
-
-        this._pakDeclined = true;
+        // Auto uses base R now; recommend pak after the operation has completed.
         return 'base';
     }
 

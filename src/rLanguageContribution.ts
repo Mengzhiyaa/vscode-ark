@@ -509,6 +509,21 @@ export class RBinaryProvider implements IBinaryProvider {
             },
         };
 
+        // A Windows host can run R of either supported architecture. Keep both
+        // kernels available so selection follows R rather than the extension host.
+        if (process.platform === 'win32') {
+            for (const arch of ['x64', 'arm64']) {
+                const platform = `windows-${arch}`;
+                const definition = {
+                    ...defs.ark,
+                    installDir: path.join(this._extensionContext.extensionPath, 'resources', 'ark', platform),
+                    platformOverride: () => platform,
+                };
+                const key = arch === process.arch ? 'ark' : `ark-${platform}`;
+                defs[key] = definition;
+            }
+        }
+
         if (typeof retVersion === 'string' && retVersion) {
             defs.ret = {
                 repo: 'Mengzhiyaa/r-environment-tools',

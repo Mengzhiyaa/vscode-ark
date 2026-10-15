@@ -192,6 +192,7 @@ export class RLanguageLsp implements ILanguageLsp {
     private _inputBoundaryProvider?: RInputBoundaryProvider;
     private _helpTopicProvider?: RHelpTopicProvider;
     private _virtualDocumentProvider?: VirtualDocumentProvider;
+    private _virtualDocumentRegistration?: vscode.Disposable;
 
     private languageClientName: string;
     private _logChannel: vscode.LogOutputChannel;
@@ -340,6 +341,10 @@ export class RLanguageLsp implements ILanguageLsp {
             middleware: {
                 ...consoleBridge.middleware,
                 handleDiagnostics(uri, diagnostics, next) {
+                    if (uri.scheme === 'file' && VDOC_PATTERN.test(path.basename(uri.fsPath))) {
+                        // Quarto waits for a diagnostics change even when squiggles are suppressed.
+                        return next(uri, []);
+                    }
                     if ((uri.scheme === 'inmemory' && uri.authority === 'console') || !shouldHandleLspDiagnostics(uri)) {
                         return undefined;
                     }
@@ -352,6 +357,24 @@ export class RLanguageLsp implements ILanguageLsp {
                     }
 
                     return next(document, position, context, token);
+                },
+                provideHover(document, position, token, next) {
+                    if (!shouldProvideCompletionForDocument(document.uri, notebookUri)) {
+                        return undefined;
+                    }
+                    return next(document, position, token);
+                },
+                provideSignatureHelp(document, position, context, token, next) {
+                    if (!shouldProvideCompletionForDocument(document.uri, notebookUri)) {
+                        return undefined;
+                    }
+                    return next(document, position, context, token);
+                },
+                provideDefinition(document, position, token, next) {
+                    if (!shouldProvideCompletionForDocument(document.uri, notebookUri)) {
+                        return undefined;
+                    }
+                    return next(document, position, token);
                 },
                 workspace: {
                     ...consoleBridge.middleware.workspace,
@@ -462,11 +485,11 @@ export class RLanguageLsp implements ILanguageLsp {
         this.log('Registering Positron LSP extensions', vscode.LogLevel.Debug);
 
         this._virtualDocumentProvider = new VirtualDocumentProvider(client, this._logChannel);
-        const vdocDisposable = vscode.workspace.registerTextDocumentContentProvider(
+        this._virtualDocumentRegistration = vscode.workspace.registerTextDocumentContentProvider(
             'ark',
             this._virtualDocumentProvider,
         );
-        this.activationDisposables.push(vdocDisposable);
+        this.activationDisposables.push(this._virtualDocumentRegistration);
         this.log('Registered VirtualDocumentProvider for ark:// URIs', vscode.LogLevel.Debug);
 
         this._statementRangeProvider = new RStatementRangeProvider(client);
@@ -497,13 +520,23 @@ export class RLanguageLsp implements ILanguageLsp {
         return this._helpTopicProvider;
     }
 
+    /** Clears providers belonging to the current activation. */
+    private clearPositronLspExtensions(): void {
+        this._statementRangeProvider = undefined;
+        this._helpTopicProvider = undefined;
+        this._inputBoundaryProvider = undefined;
+        this._virtualDocumentRegistration?.dispose();
+        this._virtualDocumentRegistration = undefined;
+        this._virtualDocumentProvider = undefined;
+    }
+
     /**
      * Stops the client instance.
      *
      * @returns A promise that resolves when the client has been stopped.
      */
     public async deactivate() {
-        this._inputBoundaryProvider = undefined;
+        this.clearPositronLspExtensions();
         if (!this.client) {
             return;
         }
@@ -514,8 +547,12 @@ export class RLanguageLsp implements ILanguageLsp {
 
         this.log(`${this.languageClientName} is stopping`, vscode.LogLevel.Debug);
 
-        await this._initializing;
-        this._inputBoundaryProvider = undefined;
+        try {
+            await this._initializing;
+        } finally {
+            // Initialization may have installed a fresh set while we waited.
+            this.clearPositronLspExtensions();
+        }
 
         const stopped = new Promise<void>((resolve) => {
             const disposable = this.client!.onDidChangeState((event) => {

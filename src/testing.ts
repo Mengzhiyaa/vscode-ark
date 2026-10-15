@@ -1,7 +1,13 @@
 import * as path from 'path';
 import * as vscode from 'vscode';
 import type { ILanguageContributionServices } from './types/supervisor-api';
-import { executeRCode, quoteRString } from './rExecution';
+import {
+    executeRCode,
+    getActiveRSession,
+    quoteRString,
+    RuntimeCodeExecutionModeValue,
+    RuntimeErrorBehaviorValue,
+} from './rExecution';
 import {
     detectRPackage,
     refreshRTestthatContexts,
@@ -53,50 +59,75 @@ export async function setupRTestExplorer(
             const run = controller.createTestRun(request);
             const queue: vscode.TestItem[] = [];
 
-            if (request.include) {
+            if (request.include?.length) {
                 queue.push(...request.include);
             } else {
                 controller.items.forEach(item => queue.push(item));
             }
 
-            for (const item of queue) {
-                if (token.isCancellationRequested) {
-                    run.skipped(item);
-                    continue;
-                }
+            const excluded = new Set(request.exclude?.map(item => item.id));
+            const included = queue.filter(item => !excluded.has(item.id));
+            included.forEach(item => run.enqueued(item));
 
-                const data = itemData.get(item);
-                if (!data) {
-                    run.skipped(item);
-                    continue;
-                }
+            try {
+                for (const item of included) {
+                    if (token.isCancellationRequested) {
+                        run.skipped(item);
+                        continue;
+                    }
 
-                run.started(item);
-                try {
-                    await executeRCode(
-                        services,
-                        [
-                            'if (!requireNamespace("testthat", quietly = TRUE)) {',
-                            '  stop("Package testthat is required. Install it with install.packages(\\"testthat\\").")',
-                            '}',
-                            testFileCode(data),
-                        ].join('\n'),
-                        {
-                            focus: true,
-                            source: 'r.testthat',
-                            fileUri: data.uri,
-                        },
-                    );
-                    run.passed(item);
-                } catch (error) {
-                    run.failed(
-                        item,
-                        new vscode.TestMessage(error instanceof Error ? error.message : String(error)),
-                    );
+                    const data = itemData.get(item);
+                    if (!data) {
+                        run.skipped(item);
+                        continue;
+                    }
+
+                    run.started(item);
+                    const started = Date.now();
+                    try {
+                        let session = getActiveRSession(services);
+                        if (!session) {
+                            // Preserve console auto-start, then wait on the actual test execution.
+                            const sessionId = await executeRCode(services, 'invisible(NULL)', {
+                                focus: false,
+                                source: 'r.testthat',
+                                mode: RuntimeCodeExecutionModeValue.NonInteractive,
+                            });
+                            session = services.runtimeSessionService.activeSessions.find(candidate => candidate.sessionId === sessionId);
+                        }
+                        if (!session) {
+                            throw new Error('No R session is available to run package tests.');
+                        }
+                        await session.executeAndWait(
+                            [
+                                'if (!requireNamespace("testthat", quietly = TRUE)) {',
+                                '  stop("Package testthat is required. Install it with install.packages(\\"testthat\\").")',
+                                '}',
+                                testFileCode(data),
+                            ].join('\n'),
+                            {
+                                mode: RuntimeCodeExecutionModeValue.NonInteractive,
+                                errorBehavior: RuntimeErrorBehaviorValue.Stop,
+                                attribution: { source: 'r.testthat', fileUri: data.uri },
+                            },
+                            token,
+                        );
+                        run.passed(item, Date.now() - started);
+                    } catch (error) {
+                        if (token.isCancellationRequested || error instanceof vscode.CancellationError) {
+                            run.skipped(item);
+                        } else {
+                            run.failed(
+                                item,
+                                new vscode.TestMessage(error instanceof Error ? error.message : String(error)),
+                                Date.now() - started,
+                            );
+                        }
+                    }
                 }
+            } finally {
+                run.end();
             }
-
-            run.end();
         },
         true,
     );
@@ -123,14 +154,14 @@ function testFileCode(data: TestItemData): string {
     const filePath = quoteRString(data.uri.fsPath);
     const packageRoot = data.packageRoot ? quoteRString(data.packageRoot.fsPath) : undefined;
     if (!packageRoot) {
-        return `testthat::test_file(${filePath})`;
+        return `testthat::test_file(${filePath}, stop_on_failure = TRUE)`;
     }
 
     return [
         'local({',
         '  oldwd <- setwd(' + packageRoot + ')',
         '  on.exit(setwd(oldwd), add = TRUE)',
-        `  testthat::test_file(${filePath})`,
+        `  testthat::test_file(${filePath}, stop_on_failure = TRUE)`,
         '})',
     ].join('\n');
 }

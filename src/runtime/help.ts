@@ -53,7 +53,9 @@ export class RHelpTopicProvider {
         position: vscode.Position,
         token: vscode.CancellationToken
     ): Promise<string | undefined> {
-
+        if (!this._client.isRunning()) {
+            return undefined;
+        }
         const params: HelpTopicParams = {
             textDocument: this._client.code2ProtocolConverter.asVersionedTextDocumentIdentifier(document),
             position: this._client.code2ProtocolConverter.asPosition(position)

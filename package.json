@@ -61,16 +61,16 @@
   "positron": {
     "minimumRVersion": "4.2.0",
     "binaryDependencies": {
-      "ark": "ark-0.1.252-486-d0569cc",
+      "ark": "ark-0.1.252-355-f1af004",
       "ret": "v0.1.3"
     },
     "binaryChecksums": {
       "ark": {
-        "darwin-universal": "sha256:28d057ceadb1da19fa8ffd5afde2ba044afcaf6dc23cb1d120ab74e4590c0b78",
-        "linux-arm64": "sha256:d2406a5c950cdd9ba5aa79ff4820b7bcee73067a53daedf975ad33d264c89060",
-        "linux-x64": "sha256:380e9595b42499bc455e4e78070eb0b30d3524d54c374d57491ddf27fba6c9dd",
-        "windows-arm64": "sha256:e38d6c540f3895d1c9b2f82ae0297314286cdb34dbfb3cb0369b17e73548a648",
-        "windows-x64": "sha256:8b375b098fd48c549f0b2d6ac03d521c4f31bf3be98bcbf392f8c4d82ae916c3"
+        "darwin-universal": "sha256:46604503784f39793b0f15eb43be5c7538cffe0d67e43686cba78124bf1f9a19",
+        "linux-arm64": "sha256:90601f318d985a56cce69a25d9e3a541386d7d12de20a66b923741dc0e1905a5",
+        "linux-x64": "sha256:494c6c8462a61730bd6b2e7ad2ca64b1d0f1807656a88522b8710ca3cff40152",
+        "windows-arm64": "sha256:92f8bba5ae53d9b6319e370ceba23da2d1a6e9aeffe4b428187b41b7fd39dc4f",
+        "windows-x64": "sha256:e954a72401403dd84bad8031a122d7309079d31d2cfc5d70a45ad9b85194f1c8"
       }
     }
   },
@@ -147,7 +147,6 @@
       {
         "viewType": "vscode-ark.rdataLoader",
         "displayName": "R Data Loader",
-        "priority": "default",
         "selector": [
           {
             "filenamePattern": "*.RData"
@@ -166,7 +165,6 @@
       {
         "viewType": "vscode-ark.rdsLoader",
         "displayName": "RDS Loader",
-        "priority": "default",
         "selector": [
           {
             "filenamePattern": "*.rds"
@@ -380,7 +378,7 @@
         },
         {
           "command": "r.useTest",
-          "when": "isRPackage && testthatIsConfigured"
+          "when": "false"
         },
         {
           "command": "r.packageCheck",
@@ -497,11 +495,29 @@
           "default": true,
           "description": "Enable R package testthat discovery in the Test Explorer."
         },
-        "ark.lsp.diagnostics.enable": {
+        "ark.lsp.diagnostics.enabled": {
           "scope": "window",
           "type": "boolean",
           "default": true,
           "description": "Enable diagnostics from the Ark R language server."
+        },
+        "ark.lsp.diagnostics.enable": {
+          "scope": "window",
+          "type": "boolean",
+          "default": true,
+          "deprecationMessage": "Use ark.lsp.diagnostics.enabled instead."
+        },
+        "oak.sourceFetching.enabled": {
+          "scope": "window",
+          "type": "boolean",
+          "default": true,
+          "description": "Fetch R package sources for Oak code navigation and analysis."
+        },
+        "oak.diagnostics.experimental.enabled": {
+          "scope": "window",
+          "type": "boolean",
+          "default": false,
+          "description": "Enable experimental diagnostics from Oak."
         },
         "ark.lsp.symbols.includeAssignmentsInBlocks": {
           "scope": "window",
@@ -540,6 +556,11 @@
             "base"
           ],
           "description": "Controls the R package installer used by the Packages view. Auto prefers pak when available and falls back to base R."
+        },
+        "packages.r.renvAutoSnapshot": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically run renv::snapshot() after package operations in an renv project. Snapshot failures do not affect the package operation's result."
         },
         "positron.reticulate.enabled": {
           "type": "string",

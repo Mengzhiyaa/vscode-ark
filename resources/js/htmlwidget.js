@@ -64,6 +64,10 @@ const renderTags = (parent, tags) => {
         if (!tag) {
             continue;
         }
+        if (Array.isArray(tag)) {
+            renderTags(parent, tag);
+            continue;
+        }
         if (!tag.name) {
             if (typeof tag === 'string') {
                 parent.appendChild(document.createTextNode(tag));
@@ -76,7 +80,11 @@ const renderTags = (parent, tags) => {
             element.setAttribute(name, Array.isArray(value) ? value.join(' ') : String(value));
         }
         for (const child of toArray(tag.children)) {
-            renderTags(element, child);
+            if (typeof child === 'string') {
+                element.appendChild(document.createTextNode(child));
+            } else {
+                renderTags(element, child);
+            }
         }
         parent.appendChild(element);
     }
