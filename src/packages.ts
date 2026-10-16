@@ -25,11 +25,28 @@ interface RPackageInstallation {
 
 export class RPackageManager implements ILanguageRuntimePackageManager {
     private _pakRecommendationShown = false;
+    private _isRenvProject: boolean | undefined;
+    private _renvProbe: Promise<boolean> | undefined;
+    private _renvGeneration = 0;
+    private readonly _runtimeSubscription: vscode.Disposable | undefined;
 
     constructor(
         private readonly _session: ILanguageRuntimeSession,
         private readonly _services: ILanguageContributionServices,
-    ) {}
+    ) {
+        this._runtimeSubscription = _session.onDidChangeRuntimeState?.(state => {
+            if (['starting', 'restarting', 'exited'].includes(String(state))) {
+                this._isRenvProject = undefined;
+                this._renvProbe = undefined;
+                this._renvGeneration++;
+            }
+        });
+    }
+
+    dispose(): void {
+        this._runtimeSubscription?.dispose();
+        this._renvGeneration++;
+    }
 
     async getPackages(token?: vscode.CancellationToken): Promise<LanguageRuntimePackage[]> {
         this._throwIfCancellationRequested(token);
@@ -252,12 +269,20 @@ export class RPackageManager implements ILanguageRuntimePackageManager {
     }
 
     private async _detectRenv(): Promise<boolean> {
-        try {
-            const result = await this._session.evaluate('!is.null(renv::project())');
-            return result.result === true;
-        } catch {
-            return false;
-        }
+        if (this._isRenvProject !== undefined) { return this._isRenvProject; }
+        if (this._renvProbe) { return this._renvProbe; }
+        const generation = this._renvGeneration;
+        const probe: Promise<boolean> = this._session.evaluate(
+            'if (requireNamespace("renv", quietly = TRUE)) !is.null(renv::project()) else FALSE',
+        ).then(result => {
+            const value = result.result === true;
+            if (generation === this._renvGeneration) { this._isRenvProject = value; }
+            return value;
+        }).catch(() => false).finally(() => {
+            if (this._renvProbe === probe) { this._renvProbe = undefined; }
+        });
+        this._renvProbe = probe;
+        return probe;
     }
 
     private _getConfiguredInstaller(): 'auto' | 'pak' | 'base' {

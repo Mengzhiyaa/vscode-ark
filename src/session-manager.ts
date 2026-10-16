@@ -200,6 +200,27 @@ export class RSessionManager implements vscode.Disposable {
             return;
         }
 
+        const lastForegroundSessionId = this.getLastForegroundSessionId();
+        const lastForegroundSession = lastForegroundSessionId
+            ? this._sessions.get(lastForegroundSessionId)
+            : undefined;
+        // Preserve this language's last foreground Console when another language
+        // is foreground, as Positron does. An uninitialized restored session can
+        // claim its services later through the Ready event.
+        if (
+            lastForegroundSession?.metadata.sessionMode === SESSION_MODE_CONSOLE &&
+            lastForegroundSession.state !== RUNTIME_STATE_EXITED
+        ) {
+            if (this.canProactivelyActivate(lastForegroundSession)) {
+                await this.activateConsoleSession(
+                    lastForegroundSession,
+                    'restored last foreground console session detected during startup',
+                );
+            }
+            return;
+        }
+
+        // Fall back only when the saved Console is missing or has exited.
         const fallbackConsoleSession = this.getActiveRSessions()
             .sort((left, right) => right.created - left.created)
             .find((session) => {

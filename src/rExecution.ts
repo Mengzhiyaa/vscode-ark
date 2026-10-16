@@ -56,6 +56,7 @@ export async function executeRCode(
         executionId?: string;
         executionMetadata?: Record<string, unknown>;
         direct?: boolean;
+        waitForCompletion?: boolean;
     } = {},
 ): Promise<string | undefined> {
     const attribution: ICodeExecutionAttribution = {
@@ -83,7 +84,12 @@ export async function executeRCode(
     }
 
     const sessionId = getActiveRSession(services)?.sessionId;
-    return services.positronConsoleService.executeCode(
+    let finished!: () => void;
+    let failed!: (error: Error) => void;
+    const completion = options.waitForCompletion
+        ? new Promise<void>((resolve, reject) => { finished = resolve; failed = reject; })
+        : undefined;
+    const args: Parameters<typeof services.positronConsoleService.executeCode> = [
         R_LANGUAGE_ID,
         sessionId,
         code,
@@ -95,7 +101,12 @@ export async function executeRCode(
         options.executionId,
         options.fileUri,
         options.executionMetadata,
-    );
+    ];
+    if (completion) { args.push({ onFinished: finished, onFailed: failed }); }
+    const submission = services.positronConsoleService.executeCode(...args);
+    if (!completion) { return submission; }
+    const [acceptedSessionId] = await Promise.all([submission, completion]);
+    return acceptedSessionId;
 }
 
 export async function evaluateRCode(

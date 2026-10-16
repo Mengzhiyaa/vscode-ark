@@ -11,12 +11,15 @@ import {
     RuntimeCodeExecutionModeValue,
 } from './rExecution';
 import { refreshRTestthatContexts } from './contexts';
+import { UnsavedScriptFiles } from './unsavedScriptFiles';
 
 export function registerRCommands(
     context: vscode.ExtensionContext,
     services: ILanguageContributionServices,
 ): vscode.Disposable[] {
+    const unsavedScripts = new UnsavedScriptFiles();
     return [
+        unsavedScripts,
         vscode.commands.registerCommand(RCommandIds.createNewFile, async () => {
             const document = await vscode.workspace.openTextDocument({ language: 'r' });
             await vscode.window.showTextDocument(document);
@@ -55,10 +58,10 @@ export function registerRCommands(
             await executePackageCommand(services, 'devtools', 'devtools::document()');
         }),
         vscode.commands.registerCommand(RCommandIds.sourceCurrentFile, async (resource?: vscode.Uri) => {
-            await sourceCurrentFile(services, false, resource);
+            await sourceCurrentFile(services, false, unsavedScripts, resource);
         }),
         vscode.commands.registerCommand(RCommandIds.sourceCurrentFileWithEcho, async (resource?: vscode.Uri) => {
-            await sourceCurrentFile(services, true, resource);
+            await sourceCurrentFile(services, true, unsavedScripts, resource);
         }),
         vscode.commands.registerCommand(RCommandIds.rmarkdownRender, async (resource?: vscode.Uri) => {
             await renderRMarkdown(services, resource);
@@ -98,6 +101,8 @@ export async function loadRDataFile(
         focus: true,
         source: 'r.loadRDataFile',
         fileUri: resource,
+        allowIncomplete: true,
+        waitForCompletion: true,
     });
 }
 
@@ -116,6 +121,8 @@ export async function loadRdsFileWithVariable(
         focus: true,
         source: 'r.loadRdsFile',
         fileUri: resource,
+        allowIncomplete: true,
+        waitForCompletion: true,
     });
     return name;
 }
@@ -142,28 +149,27 @@ async function executePackageCommand(
 async function sourceCurrentFile(
     services: ILanguageContributionServices,
     echo: boolean,
+    unsavedScripts: UnsavedScriptFiles,
     resource?: vscode.Uri,
 ): Promise<void> {
-    const filePath = await getFilePathForCommand(resource);
-    if (!filePath) {
-        vscode.window.showWarningMessage('Cannot source a file that has not been saved.');
-        return;
-    }
-
-    const document = await vscode.workspace.openTextDocument(vscode.Uri.file(filePath));
-    if (document.isDirty) {
-        await document.save();
-    }
-
-    await executeRCode(
-        services,
-        `source(${quoteRString(filePath)}${echo ? ', echo = TRUE' : ''})`,
-        {
+    const document = resource ? await vscode.workspace.openTextDocument(resource) : vscode.window.activeTextEditor?.document;
+    if (!document) { return; }
+    if (!document.isUntitled && document.isDirty && !(await document.save())) { return; }
+    let scratch: string | undefined;
+    try {
+        scratch = document.isUntitled ? await unsavedScripts.write(document) : undefined;
+        const filePath = scratch ?? await getFilePathForCommand(document.uri);
+        if (!filePath) { return; }
+        await executeRCode(services, `source(${quoteRString(filePath)}${echo ? ', echo = TRUE' : ''})`, {
             focus: false,
             source: echo ? 'r.sourceCurrentFileWithEcho' : 'r.sourceCurrentFile',
-            fileUri: vscode.Uri.file(filePath),
-        },
-    );
+            fileUri: document.uri,
+            allowIncomplete: true,
+            waitForCompletion: true,
+        });
+    } finally {
+        if (scratch) { await unsavedScripts.finished(scratch); }
+    }
 }
 
 async function renderRMarkdown(
